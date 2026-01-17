@@ -1,3 +1,9 @@
+"""
+DeepPulse - AI Agent Module
+Author: Grace Li
+Date: 2026
+Description: Handles interaction with Google Gemini 3 API for ECG analysis and interpretation.
+"""
 import google.generativeai as genai
 import os
 import streamlit as st
@@ -34,8 +40,8 @@ def analyze_ecg(image_bytes, user_guess, patient_metadata=None):
     if not success:
         return f"Error: {msg}"
     
-    # Use gemini-1.5-flash or gemini-1.5-pro for best vision performance
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # Use gemini-3-flash-preview as requested by user
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     
     img = Image.open(image_bytes)
     

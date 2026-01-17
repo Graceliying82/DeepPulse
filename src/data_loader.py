@@ -1,69 +1,104 @@
+"""
+DeepPulse - Data Loading Module
+Author: Grace Li
+Date: 2026
+Description: Manages downloading and loading of ECG data from PhysioNet (PTB Diagnostic Database) using wfdb.
+"""
 import wfdb
 import os
 import pandas as pd
 import numpy as np
+import random
+import shutil
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 
-def ensure_data_dir():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+def ensure_data_dir(data_dir=None):
+    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
 
-def download_sample_data(num_records=5):
+def clean_data_directory(data_dir=None):
+    """
+    Safely removes all content from the data directory.
+    """
+    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    if os.path.exists(target_dir):
+        shutil.rmtree(target_dir)
+        os.makedirs(target_dir) # Recreate empty dir
+        print(f"Data directory cleared: {target_dir}")
+
+def download_sample_data(num_records=5, start_index=0, random_shuffle=True, data_dir=None):
     """
     Downloads sample records from the PTB Diagnostic ECG Database (ptbdb).
+    Args:
+        num_records: Number of new records to download.
+        start_index: Deprecated if random_shuffle is True.
+        random_shuffle: If True, randomly samples from records not yet downloaded.
+        data_dir: Optional custom directory to download data to.
     """
-    ensure_data_dir()
-    print(f"Downloading {num_records} records from 'ptbdb' to {DATA_DIR}...")
+    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    ensure_data_dir(target_dir)
+    print(f"Downloading {num_records} records to {target_dir}...")
     
-    # Get a list of records
-    records = wfdb.get_record_list('ptbdb')
+    # Get a list of all available records in the database
+    all_records = wfdb.get_record_list('ptbdb')
     
-    # Download the first N records
-    # records are paths like 'patient001/s0010_re'
-    # we need to be careful with structure. 
-    # wfdb.dl_database automates this better but getting individual records is safer for a demo.
+    # Identify which ones we already have
+    existing_records = set(get_available_patients(target_dir))
     
-    target_records = records[:num_records]
+    # Filter out existing to find candidates
+    candidates = [r for r in all_records if r not in existing_records]
     
-    wfdb.dl_database('ptbdb', DATA_DIR, target_records, overwrite=False)
+    if not candidates:
+        print("All records have already been downloaded.")
+        return []
+        
+    # Select records to download
+    if random_shuffle:
+        print(f"Randomly selecting from {len(candidates)} available records...")
+        random.shuffle(candidates)
+        target_records = candidates[:num_records]
+    else:
+        print(f"Selecting sequentially starting from {start_index}...")
+        target_records = all_records[start_index : start_index + num_records]
     
-    print("Download complete.")
+    if not target_records:
+        return []
+        
+    wfdb.dl_database('ptbdb', target_dir, target_records, overwrite=False)
+    
+    print(f"Download of {len(target_records)} records complete.")
     return target_records
 
-def get_available_patients():
+def get_available_patients(data_dir=None):
     """
     Scans the data directory for header files (.hea) to list available records.
-    Returns a list of record names relative to DATA_DIR.
+    Returns a list of record names relative to data_dir.
     """
-    ensure_data_dir()
-    # ptbdb structure is data/patientXXX/sXXXX_re.hea
-    # We want to find all .hea files
+    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    ensure_data_dir(target_dir)
     
     records = []
-    for root, dirs, files in os.walk(DATA_DIR):
+    for root, dirs, files in os.walk(target_dir):
         for file in files:
             if file.endswith(".hea"):
                 # Get relative path without extension
                 full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, DATA_DIR)
+                rel_path = os.path.relpath(full_path, target_dir)
                 records.append(os.path.splitext(rel_path)[0])
     
     return sorted(records)
 
-def load_patient_data(record_name):
+def load_patient_data(record_name, data_dir=None):
     """
     Loads signal and metadata for a given record.
-    record_name is relative to DATA_DIR, e.g., 'patient001/s0010_re'
+    record_name is relative to data_dir.
     """
-    # wfdb.rdsamp expects the path without extension
-    # It searches in the current directory or specified directory.
-    # We need to construct the full path prefix
-    
-    record_path = os.path.join(DATA_DIR, record_name)
+    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    record_path = os.path.join(target_dir, record_name)
     
     # Read the record
-    # signals is a numpy array, fields is a dict
     signals, fields = wfdb.rdsamp(record_path)
     
     return signals, fields

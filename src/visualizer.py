@@ -1,3 +1,9 @@
+"""
+DeepPulse - ECG Visualizer
+Author: Grace Li
+Date: 2026
+Description: Renders 12-lead ECG signals using Matplotlib with professional medical grid styling.
+"""
 import matplotlib.pyplot as plt
 import numpy as np
 import io
@@ -38,11 +44,14 @@ def plot_12_lead_ecg(signals, fields):
 
     num_leads = len(lead_indices)
     
-    # Create Layout: 6 rows, 2 columns for 12 leads, or dynamic
+    # Create Layout: 6 rows, 2 columns for 12 leads
     cols = 2
-    rows = (num_leads + 1) // 2
+    rows = 6
     
-    fig, axes = plt.subplots(rows, cols, figsize=(15, 2 * rows), sharex=True)
+    # Make it wider: (Width, Height). Standard paper aspect ratio is important.
+    # 10 seconds of data at 25mm/s = 250mm long. 
+    # We want it to be wide on screen.
+    fig, axes = plt.subplots(rows, cols, figsize=(20, 12), sharex=True)
     axes = axes.flatten()
     
     fs = fields.get('fs', 1000)
@@ -57,24 +66,61 @@ def plot_12_lead_ecg(signals, fields):
         plot_signals = signals
         plot_time = time
 
+    # ECG Grid Styling with Dynamic Range
+    # We need to center the signal because PTBDB data might have offsets.
+    
     for i, lead_idx in enumerate(lead_indices):
+        if i >= len(axes): break
         ax = axes[i]
-        signal = plot_signals[:, lead_idx]
+        
+        raw_signal = plot_signals[:, lead_idx]
+        # Baseline correction: subtract media/mean to center around 0
+        signal = raw_signal - np.mean(raw_signal)
+        
         lead_name = found_leads[i]
         
-        ax.plot(plot_time, signal, color='black', linewidth=0.8)
-        ax.set_title(lead_name, loc='left', fontsize=10, fontweight='bold')
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        # Determine Y-limits based on data spread to ensure visibility
+        # Standard ECG is usually +/- 2mV, but let's be safe.
+        y_min = np.min(signal)
+        y_max = np.max(signal)
+        y_range = max(abs(y_min), abs(y_max), 1.5) # Ensure at least 1.5mV range
         
-        # Remove spines to look cleaner
+        limit = np.ceil(y_range * 1.2 * 2) / 2 # Round up to nearest 0.5
+        ax.set_ylim(-limit, limit)
+        
+        # Create grid ticks covering the visible area
+        curr_x_max = plot_time[-1]
+        
+        # X-axis ticks (Time)
+        major_ticks_x = np.arange(0, curr_x_max + 0.2, 0.2)
+        minor_ticks_x = np.arange(0, curr_x_max + 0.04, 0.04)
+        
+        # Y-axis ticks (Voltage)
+        major_ticks_y = np.arange(-limit, limit + 0.5, 0.5)
+        minor_ticks_y = np.arange(-limit, limit + 0.1, 0.1)
+        
+        ax.set_xticks(major_ticks_x)
+        ax.set_xticks(minor_ticks_x, minor=True)
+        ax.set_yticks(major_ticks_y)
+        ax.set_yticks(minor_ticks_y, minor=True)
+        
+        ax.grid(which='major', linestyle='-', linewidth=0.7, color='red', alpha=0.3)
+        ax.grid(which='minor', linestyle=':', linewidth=0.5, color='red', alpha=0.2)
+        
+        ax.plot(plot_time, signal, color='black', linewidth=0.9)
+        ax.set_title(lead_name, x=0.01, y=0.8, loc='left', fontsize=12, fontweight='bold', bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'))
+        
+        # Remove spines but keep grid
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.spines['bottom'].set_visible(False)
         ax.spines['left'].set_visible(False)
+        ax.tick_params(axis='both', which='both', length=0, labelsize=0) # Hide tick marks/labels generally 
         
-        # Minimal ticks
+        # Minimal labels only on bottom/left-most to avoid clutter
         if i >= num_leads - 2:
-            ax.set_xlabel('Time (s)')
+           ax.tick_params(axis='x', labelsize=8) # Show time on bottom
+           ax.set_xlabel('Time (s)', fontsize=8)
 
     # Hide unused subplots
     for i in range(num_leads, len(axes)):
