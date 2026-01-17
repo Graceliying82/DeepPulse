@@ -28,10 +28,11 @@ def clean_data_directory(data_dir=None):
         os.makedirs(target_dir) # Recreate empty dir
         print(f"Data directory cleared: {target_dir}")
 
-def download_sample_data(num_records=5, start_index=0, random_shuffle=True, data_dir=None):
+def download_sample_data(db_slug='ptbdb', num_records=5, start_index=0, random_shuffle=True, data_dir=None):
     """
-    Downloads sample records from the PTB Diagnostic ECG Database (ptbdb).
+    Downloads sample records from a specified PhysioNet Database.
     Args:
+        db_slug: The unique identifier of the database (e.g., 'ptbdb', 'mitdb').
         num_records: Number of new records to download.
         start_index: Deprecated if random_shuffle is True.
         random_shuffle: If True, randomly samples from records not yet downloaded.
@@ -39,19 +40,25 @@ def download_sample_data(num_records=5, start_index=0, random_shuffle=True, data
     """
     target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
     ensure_data_dir(target_dir)
-    print(f"Downloading {num_records} records to {target_dir}...")
+    print(f"Downloading {num_records} records from {db_slug} to {target_dir}...")
     
-    # Get a list of all available records in the database
-    all_records = wfdb.get_record_list('ptbdb')
+    try:
+        # Get a list of all available records in the database
+        all_records = wfdb.get_record_list(db_slug)
+    except Exception as e:
+        print(f"Error fetching record list for {db_slug}: {e}")
+        return []
     
     # Identify which ones we already have
     existing_records = set(get_available_patients(target_dir))
     
     # Filter out existing to find candidates
+    # Note: different DBs have different naming conventions, but get_available_patients returns relative paths
+    # We might need to handle subdirectories if wfdb downloads them that way.
     candidates = [r for r in all_records if r not in existing_records]
     
     if not candidates:
-        print("All records have already been downloaded.")
+        print("All records have already been downloaded (or none found).")
         return []
         
     # Select records to download
@@ -66,7 +73,7 @@ def download_sample_data(num_records=5, start_index=0, random_shuffle=True, data
     if not target_records:
         return []
         
-    wfdb.dl_database('ptbdb', target_dir, target_records, overwrite=False)
+    wfdb.dl_database(db_slug, target_dir, target_records, overwrite=False)
     
     print(f"Download of {len(target_records)} records complete.")
     return target_records
