@@ -48,6 +48,24 @@ st.markdown("### 12-Lead ECG Analysis & Educational Platform")
 
 # Sidebar
 with st.sidebar:
+    st.header("Settings")
+    
+    # Check if system key exists
+    has_system_key = False
+    try:
+        if st.secrets.get("GOOGLE_API_KEY"): has_system_key = True
+    except (FileNotFoundError, KeyError):
+        pass
+    if os.getenv("GOOGLE_API_KEY"): has_system_key = True
+
+    if not has_system_key:
+        st.warning("⚠️ Demo Mode: No system API key found.")
+        user_key = st.text_input("🔑 Enter Google API Key", type="password", help="Get a free key at https://aistudio.google.com/")
+        if user_key:
+            st.session_state['USER_GOOGLE_API_KEY'] = user_key
+            st.success("Key saved!")
+    
+    st.divider()
     st.header("Data Settings")
     
     # Custom Data Path
@@ -199,8 +217,15 @@ if selected_patient:
                 analyze_btn = st.button("🚀 Full Analysis")
             
         with col_ai:
-                if not os.path.exists(".streamlit/secrets.toml") and not os.getenv("GOOGLE_API_KEY"):
-                    st.error("Please set up your .streamlit/secrets.toml with GOOGLE_API_KEY first.")
+                api_ready = False
+                try:
+                    if st.secrets.get("GOOGLE_API_KEY"): api_ready = True
+                except: pass
+                if os.getenv("GOOGLE_API_KEY"): api_ready = True
+                if st.session_state.get("USER_GOOGLE_API_KEY"): api_ready = True
+
+                if not api_ready:
+                    st.error("Please enter your Google API Key in the sidebar to use AI features.")
                 else:
                     # Determine intent
                     if quiz_btn:

@@ -25,9 +25,13 @@ def get_genai_client():
     # Check Environment Variable
     if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
+
+    # Check User Session State (Public Demo Mode)
+    if not api_key:
+        api_key = st.session_state.get("USER_GOOGLE_API_KEY")
         
     if not api_key:
-        return None, "API Key not found. Please add GOOGLE_API_KEY to .streamlit/secrets.toml"
+        return None, "API Key missing. Please set it in secrets or enter it in the sidebar."
         
     try:
         client = genai.Client(api_key=api_key)
