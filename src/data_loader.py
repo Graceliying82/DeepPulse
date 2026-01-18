@@ -24,6 +24,15 @@ def clean_data_directory(data_dir=None):
     """
     target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
     if os.path.exists(target_dir):
+        # Safety check to prevent accidental deletion of critical system paths
+        # Ensure path looks like our safe data directory
+        abs_path = os.path.abspath(target_dir)
+        if "DeepPulse" not in abs_path or "data" not in os.path.basename(abs_path):
+             # Allow test_data_temp for tests
+             if "test_data_temp" not in abs_path:
+                print(f"Safety Check Failed: Refusing to delete potentially unsafe directory: {target_dir}")
+                return
+
         shutil.rmtree(target_dir)
         os.makedirs(target_dir) # Recreate empty dir
         print(f"Data directory cleared: {target_dir}")
@@ -46,7 +55,7 @@ def download_sample_data(db_slug='ptbdb', num_records=5, start_index=0, random_s
         # Get a list of all available records in the database
         all_records = wfdb.get_record_list(db_slug)
     except Exception as e:
-        print(f"Error fetching record list for {db_slug}: {e}")
+        print(f"Error fetching record list for {db_slug}. Check your internet connection or database slug. Details: {e}")
         return []
     
     # Identify which ones we already have

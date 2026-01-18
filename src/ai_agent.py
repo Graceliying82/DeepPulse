@@ -4,13 +4,14 @@ Author: Grace Li
 Date: 2026
 Description: Handles interaction with Google Gemini 3 API for ECG analysis and interpretation.
 """
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import os
 import streamlit as st
 from PIL import Image
 
-def configure_genai():
-    """Configures the Gemini API using streamlit secrets or env variables."""
+def get_genai_client():
+    """Configures and returns the Gemini API Client."""
     api_key = None
     
     # Check Streamlit secrets
@@ -26,10 +27,13 @@ def configure_genai():
         api_key = os.getenv("GOOGLE_API_KEY")
         
     if not api_key:
-        return False, "API Key not found. Please add GOOGLE_API_KEY to .streamlit/secrets.toml"
+        return None, "API Key not found. Please add GOOGLE_API_KEY to .streamlit/secrets.toml"
         
-    genai.configure(api_key=api_key)
-    return True, "Success"
+    try:
+        client = genai.Client(api_key=api_key)
+        return client, "Success"
+    except Exception as e:
+        return None, f"Configuration Error: {str(e)}"
 
 def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"):
     """
@@ -37,12 +41,9 @@ def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"
     mode: "full" (default) for complete diagnosis, "hints" for educational guidance.
     """
     
-    success, msg = configure_genai()
-    if not success:
+    client, msg = get_genai_client()
+    if not client:
         return f"Error: {msg}"
-    
-    # Use gemini-3-flash-preview as requested by user
-    model = genai.GenerativeModel('gemini-3-flash-preview')
     
     img = Image.open(image_bytes)
     
@@ -55,6 +56,20 @@ def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"
         1. Point out 3 specific visual features in the ECG that are abnormal or noteworthy (e.g., "Look closely at the PR interval in Lead II").
         2. Ask a guiding question to help the user figure out the diagnosis.
         3. **DO NOT** state the final diagnosis or conclusion. Keep it open-ended.
+        """
+    elif mode == "quiz":
+        instruction_segment = """
+        The user wants to test their knowledge with a multiple-choice quiz.
+        Please provide exactly 3 potential diagnoses:
+        - 1 must be the Correct diagnosis.
+        - 2 must be plausible Distractors (incorrect but tricky).
+        
+        Return the response as a **VALID JSON ARRAY** of objects. Each object must have:
+        - "diagnosis": (string) The name of the condition.
+        - "is_correct": (boolean) true if correct, false otherwise.
+        - "explanation": (string) A short explanation of why it fits or why it doesn't (don't reveal "this is correct" in the text, just explain the features).
+        
+        Do NOT wrap the JSON in markdown code blocks. Just return the raw JSON string.
         """
     else:
         instruction_segment = """
@@ -79,22 +94,45 @@ def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"
     Disclaimer: This is for educational purposes only and not for clinical diagnosis.
     """
     
+
     try:
-        response = model.generate_content([prompt, img])
+        # New SDK usage
+        response = client.models.generate_content(
+            model='gemini-3-flash-preview', 
+            contents=[prompt, img]
+        )
+        
+        if mode == "quiz":
+            import json
+            text = response.text.strip()
+            # Clean potential markdown
+            if text.startswith("```json"): text = text[7:]
+            if text.startswith("```"): text = text[3:]
+            if text.endswith("```"): text = text[:-3]
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return {"error": "json_error", "message": "Failed to parse AI quiz response."}
+
         return response.text
     except Exception as e:
-        return f"AI Analysis Failed: {str(e)}"
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            msg = "⚠️ AI Daily Quota Exceeded. You have used up your free tier requests for today. Please try again tomorrow or upgrade your plan."
+            if mode == "quiz":
+                return {"error": "quota_exceeded", "message": msg}
+            return msg
+        return f"AI Analysis Failed: {err_str}"
+
 def recommend_databases(user_interest):
     """
     Asks Gemini to recommend 3 PhysioNet databases based on the user's interest.
     Returns a list of dicts: {'name': str, 'slug': str, 'description': str}
     """
-    success, msg = configure_genai()
-    if not success:
+    client, msg = get_genai_client()
+    if not client:
         return [{"name": "Error", "slug": "error", "description": msg}]
         
-    model = genai.GenerativeModel('gemini-3-flash-preview') # Use Gemini 3 as requested and verified
-    
     prompt = f"""
     You are an expert on PhysioNet databases. The user is interested in: "{user_interest}".
     
@@ -109,7 +147,10 @@ def recommend_databases(user_interest):
     """
     
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-3-flash-preview',
+            contents=prompt
+        )
         import json
         text = response.text.strip()
         # Clean potential markdown

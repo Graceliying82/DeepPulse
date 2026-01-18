@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import io
 
+SUBPLOT_WIDTH = 20
+SUBPLOT_HEIGHT_PER_ROW = 2.5 # Default for dynamic rows
+SUBPLOT_HEIGHT_12_LEAD = 12
+
 def plot_ecg_signals(signals, fields):
     """
     Plots ECG signals with a dynamic layout based on channel count.
@@ -27,17 +31,17 @@ def plot_ecg_signals(signals, fields):
         # Standard 12-lead layout: 6 rows, 2 columns
         rows = 6
         cols = 2
-        figsize = (20, 12)
+        figsize = (SUBPLOT_WIDTH, SUBPLOT_HEIGHT_12_LEAD)
     elif num_signals <= 6:
          # Stack vertically for small number of leads (e.g., 1, 2, 3)
         rows = num_signals
         cols = 1
-        figsize = (15, 3 * rows)
+        figsize = (15, 3 * rows) # Keep this custom for single col for now or use constant ratio
     else:
         # General case: 2 columns
         cols = 2
         rows = int(np.ceil(num_signals / 2))
-        figsize = (20, 2.5 * rows)
+        figsize = (SUBPLOT_WIDTH, SUBPLOT_HEIGHT_PER_ROW * rows)
 
     fig, axes = plt.subplots(rows, cols, figsize=figsize, sharex=True)
     if num_signals > 1:

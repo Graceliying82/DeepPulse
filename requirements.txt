@@ -2,7 +2,7 @@ streamlit
 pandas
 numpy
 matplotlib
-google-generativeai
+google-genai
 python-dotenv
 wfdb
 scipy

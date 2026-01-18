@@ -180,7 +180,7 @@ if selected_patient:
 
         st.subheader("12-Lead ECG Viewer")
         fig = plot_ecg_signals(signals, fields)
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=True)
         
         st.divider()
         
@@ -190,29 +190,86 @@ if selected_patient:
         with col_input:
             user_notes = st.text_input("Add your hints or observations (Optional)", placeholder="e.g. Looks like ST elevation in V2...")
             
-            col_hint, col_full = st.columns(2)
+            col_hint, col_quiz, col_full = st.columns(3)
             with col_hint:
                 hint_btn = st.button("💡 Get Hints")
+            with col_quiz:
+                quiz_btn = st.button("❓ More Hints")
             with col_full:
                 analyze_btn = st.button("🚀 Full Analysis")
             
         with col_ai:
-            if hint_btn or analyze_btn:
                 if not os.path.exists(".streamlit/secrets.toml") and not os.getenv("GOOGLE_API_KEY"):
                     st.error("Please set up your .streamlit/secrets.toml with GOOGLE_API_KEY first.")
                 else:
-                    mode = "hints" if hint_btn else "full"
-                    label = "Providing hints..." if hint_btn else "DeepPulse AI is analyzing the waveform..."
+                    # Determine intent
+                    if quiz_btn:
+                        st.session_state['active_mode'] = 'quiz'
+                        # Clear specific quiz options to force regeneration only if desired, 
+                        # but user might just want to see the quiz. 
+                        # Let's assume hitting the button means "New Quiz"
+                        if 'quiz_options' in st.session_state:
+                            del st.session_state['quiz_options']
+                    elif hint_btn:
+                        st.session_state['active_mode'] = 'hints'
+                    elif analyze_btn:
+                        st.session_state['active_mode'] = 'full'
                     
-                    with st.spinner(label):
-                        # Convert plot to image for AI
-                        img_buf = convert_plot_to_image(fig)
+                    # NOTE: We can't rely solely on buttons because clicking a quiz answer re-runs script
+                    # and the 'quiz_btn' is no longer True. We need persistence.
+                    active_mode = st.session_state.get('active_mode', None)
+
+                    # Prepare Data
+                    img_buf = convert_plot_to_image(fig)
+                    meta_str = f"Age: {age}, Sex: {sex}"
+
+                    if active_mode == "quiz":
+                        st.subheader("Select the most likely diagnosis:")
                         
-                        # Gather metadata for context
-                        meta_str = f"Age: {age}, Sex: {sex}"
+                        # Generate or retrieve options
+                        if 'quiz_options' not in st.session_state:
+                            with st.spinner("Generating quiz options..."):
+                                response = analyze_ecg(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode="quiz")
+                                if isinstance(response, dict) and "error" in response:
+                                    st.warning(response['message'])
+                                    st.session_state['quiz_options'] = []
+                                elif isinstance(response, list):
+                                    import random
+                                    random.shuffle(response)
+                                    st.session_state['quiz_options'] = response
+                                else:
+                                    st.error(f"Failed to generate quiz: {response}")
+                                    st.session_state['quiz_options'] = []
                         
-                        response = analyze_ecg(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode=mode)
-                        st.markdown(response)
+                        # Render Options
+                        options = st.session_state.get('quiz_options', [])
+                        for item in options:
+                            # Use a container for visual grouping
+                            with st.container():
+                                # Unique key required for buttons in loop
+                                if st.button(f"👉 {item['diagnosis']}", key=f"quiz_btn_{item['diagnosis']}"):
+                                    # 1. Feedback
+                                    if item['is_correct']:
+                                        st.balloons()
+                                        st.success(f"**Correct!** {item['explanation']}")
+                                    else:
+                                        st.error(f"**Incorrect.** {item['explanation']}")
+                                    
+                                    # 2. Trigger Full Analysis automatically
+                                    st.markdown("---")
+                                    st.subheader(f"🚀 Detailed Analysis for *{item['diagnosis']}*")
+                                    with st.spinner("Analyzing details..."):
+                                        # Pass the user's choice as the 'note'
+                                        notes_context = f"User selected '{item['diagnosis']}' in quiz mode. User notes: {user_notes}"
+                                        full_analysis = analyze_ecg(img_buf, user_notes=notes_context, patient_metadata=meta_str, mode="full")
+                                        st.markdown(full_analysis)
+
+                    elif active_mode in ["hints", "full"]:
+                        # Standard single-shot analysis
+                        label = "Providing hints..." if active_mode == "hints" else "DeepPulse AI is analyzing the waveform..."
+                        with st.spinner(label):
+                             response = analyze_ecg(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode=active_mode)
+                             st.markdown(response)
 
     except Exception as e:
         st.error(f"Error loading record: {e}")
