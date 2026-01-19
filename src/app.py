@@ -11,8 +11,25 @@ from data_loader import download_sample_data, get_available_patients, load_patie
 from visualizer import plot_ecg_signals, convert_plot_to_image
 from ai_agent import analyze_ecg
 import os
+import logging
 
-st.set_page_config(page_title="DeepPulse", page_icon="🫀", layout="wide")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# "Human Readable" Constants for Emojis
+# "Human Readable" Constants for Emojis
+HEART_ICON = ":heart:" 
+WARNING_ICON = ":warning:"
+KEY_ICON = ":key:"
+TRASH_ICON = ":wastebasket:"
+SEARCH_ICON = ":mag:"
+BULB_ICON = ":bulb:"
+POINTER_RIGHT_ICON = ":point_right:"
+POINTER_LEFT_ICON = ":point_left:"
+ROCKET_ICON = ":rocket:"
+QUESTION_ICON = ":question:"
+
+st.set_page_config(page_title="DeepPulse", page_icon=HEART_ICON, layout="wide")
 
 # Custom CSS for "Premium" feel
 st.markdown("""
@@ -43,7 +60,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🫀 DeepPulse: AI ECG Assistant")
+st.title(f"{HEART_ICON} DeepPulse: AI ECG Assistant")
 st.markdown("### 12-Lead ECG Analysis & Educational Platform")
 
 # Sidebar
@@ -52,15 +69,18 @@ with st.sidebar:
     
     # Check if system key exists
     has_system_key = False
+
+    # Try to read key from secrets and environment variables first
     try:
         if st.secrets.get("GOOGLE_API_KEY"): has_system_key = True
     except (FileNotFoundError, KeyError):
-        pass
+        logging.info("No system API key found from secrets. Trying environment variable.")
+
     if os.getenv("GOOGLE_API_KEY"): has_system_key = True
 
     if not has_system_key:
-        st.warning("⚠️ Demo Mode: No system API key found.")
-        user_key = st.text_input("🔑 Enter Google API Key", type="password", help="Get a free key at https://aistudio.google.com/")
+        st.warning(f"{WARNING_ICON} Demo Mode: No system API key found.")
+        user_key = st.text_input(f"{KEY_ICON} Enter Google API Key", type="password", help="Get a free key at https://aistudio.google.com/")
         if user_key:
             st.session_state['USER_GOOGLE_API_KEY'] = user_key
             st.success("Key saved!")
@@ -76,15 +96,18 @@ with st.sidebar:
     if custom_path:
         st.session_state['custom_data_path'] = custom_path
         active_data_dir = custom_path
-        st.info(f"Using custom data: {custom_path}")
+        logging.info(f"Using custom data: {custom_path}")
     else:
         active_data_dir = None # Use default
+        logging.info(f"Using default data directory: {DEFAULT_DATA_DIR}")
     
     # Data Management
-    if st.button("🗑️ Clear All Downloaded Data"):
-        clean_data_directory(data_dir=active_data_dir)
-        st.success("Data directory cleared.")
-        st.rerun()
+    with st.popover(f"{TRASH_ICON} Clear All Downloaded Data"):
+        st.write("Are you sure you want to clear all downloaded data?")
+        if st.button("Yes, delete everything", type="primary"):
+            clean_data_directory(data_dir=active_data_dir)
+            st.success("Data directory cleared.")
+            st.rerun()
 
     st.divider()
     st.header("Database & Downloads")
@@ -93,7 +116,7 @@ with st.sidebar:
     st.markdown("#### 1. Find Data")
     user_interest = st.text_input("I am interested in...", placeholder="e.g. Tachycardia, Ablation, Atrial Fibrillation")
     
-    if st.button("🔍 Ask AI for Databases"):
+    if st.button(f"{SEARCH_ICON} Ask AI for Databases"):
         if not user_interest:
             st.warning("Please enter a topic first.")
         else:
@@ -118,7 +141,7 @@ with st.sidebar:
     selected_slug = selected_db_obj['slug']
     
     if recs and selected_db_obj in recs:
-        st.caption(f"💡 {selected_db_obj['description']}")
+        st.caption(f"{BULB_ICON} {selected_db_obj['description']}")
 
     # 3. Download
     st.markdown("#### 2. Download Data")
@@ -210,11 +233,11 @@ if selected_patient:
             
             col_hint, col_quiz, col_full = st.columns(3)
             with col_hint:
-                hint_btn = st.button("💡 Get Hints")
+                hint_btn = st.button(f"{BULB_ICON} Get Hints")
             with col_quiz:
-                quiz_btn = st.button("❓ More Hints")
+                quiz_btn = st.button(f"{QUESTION_ICON} More Hints")
             with col_full:
-                analyze_btn = st.button("🚀 Full Analysis")
+                analyze_btn = st.button(f"{ROCKET_ICON} Full Analysis")
             
         with col_ai:
                 api_ready = False
@@ -272,7 +295,7 @@ if selected_patient:
                             # Use a container for visual grouping
                             with st.container():
                                 # Unique key required for buttons in loop
-                                if st.button(f"👉 {item['diagnosis']}", key=f"quiz_btn_{item['diagnosis']}"):
+                                if st.button(f"{POINTER_RIGHT_ICON} {item['diagnosis']}", key=f"quiz_btn_{item['diagnosis']}"):
                                     # 1. Feedback
                                     if item['is_correct']:
                                         st.balloons()
@@ -282,7 +305,7 @@ if selected_patient:
                                     
                                     # 2. Trigger Full Analysis automatically
                                     st.markdown("---")
-                                    st.subheader(f"🚀 Detailed Analysis for *{item['diagnosis']}*")
+                                    st.subheader(f"{ROCKET_ICON} Detailed Analysis for *{item['diagnosis']}*")
                                     with st.spinner("Analyzing details..."):
                                         # Pass the user's choice as the 'note'
                                         notes_context = f"User selected '{item['diagnosis']}' in quiz mode. User notes: {user_notes}"
@@ -299,4 +322,4 @@ if selected_patient:
     except Exception as e:
         st.error(f"Error loading record: {e}")
 else:
-    st.info("👈 Please download sample data and select a patient to begin.")
+    st.info(f"{POINTER_LEFT_ICON} Please download sample data and select a patient to begin.")
