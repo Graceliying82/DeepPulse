@@ -16,6 +16,9 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Suppress verbose matplotlib font_manager logs
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
 # "Human Readable" Constants for Emojis
 # "Human Readable" Constants for Emojis
 HEART_ICON = ":heart:" 
@@ -221,7 +224,7 @@ if selected_patient:
 
         st.subheader("12-Lead ECG Viewer")
         fig = plot_ecg_signals(signals, fields)
-        st.pyplot(fig, use_container_width=True)
+        st.pyplot(fig)
         
         st.divider()
         
