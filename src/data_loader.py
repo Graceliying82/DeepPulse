@@ -10,6 +10,9 @@ import pandas as pd
 import numpy as np
 import random
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 
@@ -54,8 +57,8 @@ def download_sample_data(db_slug='ptbdb', num_records=5, start_index=0, random_s
     try:
         # Get a list of all available records in the database
         all_records = wfdb.get_record_list(db_slug)
-    except Exception as e:
-        print(f"Error fetching record list for {db_slug}. Check your internet connection or database slug. Details: {e}")
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Error fetching record list for {db_slug}. Check your internet connection or database slug. Details: {e}")
         return []
     
     # Identify which ones we already have
@@ -67,16 +70,16 @@ def download_sample_data(db_slug='ptbdb', num_records=5, start_index=0, random_s
     candidates = [r for r in all_records if r not in existing_records]
     
     if not candidates:
-        print("All records have already been downloaded (or none found).")
+        logger.info("All records have already been downloaded (or none found).")
         return []
         
     # Select records to download
     if random_shuffle:
-        print(f"Randomly selecting from {len(candidates)} available records...")
+        logger.info(f"Randomly selecting from {len(candidates)} available records...")
         random.shuffle(candidates)
         target_records = candidates[:num_records]
     else:
-        print(f"Selecting sequentially starting from {start_index}...")
+        logger.info(f"Selecting sequentially starting from {start_index}...")
         target_records = all_records[start_index : start_index + num_records]
     
     if not target_records:
