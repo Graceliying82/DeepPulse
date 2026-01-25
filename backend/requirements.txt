@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+wfdb
+pandas==2.0.3
+numpy==1.26.4
+google-genai
+python-multipart
+pydantic
+matplotlib
+pytest
+pytest-asyncio
+httpx
+python-dotenv
