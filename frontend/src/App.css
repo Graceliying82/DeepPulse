@@ -1,0 +1,99 @@
+:root {
+  --bg-dark: #0f1115;
+  --bg-panel: rgba(22, 27, 34, 0.7);
+  --primary-glow: #00f2ff;
+  --accent-glow: #ff0055;
+  --text-primary: #e6e6e6;
+  --text-secondary: #a1a1aa;
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden; /* App style */
+}
+
+.app-container {
+  display: grid;
+  grid-template-columns: 80px 1fr 350px;
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at 10% 20%, rgba(0, 0, 0, 0.8) 0%, var(--bg-dark) 90%);
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  border-right: var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 20px;
+  z-index: 10;
+}
+
+.nav-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.nav-icon:hover, .nav-icon.active {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--primary-glow);
+  box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
+  border: 1px solid rgba(0, 242, 255, 0.3);
+}
+
+/* Main Content */
+.main-content {
+  padding: 30px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 20px;
+  height: 100%;
+}
+
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(10px);
+  border: var(--glass-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* Right Panel (Chat) */
+.right-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  border-left: var(--glass-border);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography & Elements */
+h1, h2, h3 { margin: 0; font-weight: 600; }
+h1 { font-size: 24px; color: var(--text-primary); }
+p { color: var(--text-secondary); font-size: 14px; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }

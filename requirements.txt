@@ -1,8 +1,0 @@
-streamlit
-pandas
-numpy
-matplotlib
-google-genai
-python-dotenv
-wfdb
-scipy
