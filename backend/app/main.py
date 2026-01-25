@@ -5,6 +5,10 @@ from typing import List, Optional, Dict, Any
 import uvicorn
 import os
 import io
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from app.services import data_service, ai_service
 
@@ -28,6 +32,12 @@ app.add_middleware(
 class DownloadRequest(BaseModel):
     db_slug: str
     num_records: int = 5
+    category: Optional[str] = None  # Auto-detected if not provided
+
+class DatabaseRecommendationRequest(BaseModel):
+    user_role: str
+    category: str
+    user_interest: Optional[str] = None
 
 class AnalyzeRequest(BaseModel):
     # For file uploads we usually use Form data, but for metadata we use models.
@@ -44,6 +54,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     signal_context: Optional[str] = None
+
 
 # --- Routes ---
 
@@ -64,16 +75,20 @@ def list_data():
 def download_data(req: DownloadRequest):
     """Download data from PhysioNet."""
     try:
-        records = data_service.download_data(req.db_slug, req.num_records)
+        records = data_service.download_data(
+            req.db_slug, 
+            req.num_records, 
+            category=req.category
+        )
         return {"status": "success", "downloaded": len(records), "records": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/data/{record_id:path}")
-def get_record(record_id: str):
-    """Load specific record data."""
+@app.get("/api/data/{category}/{record_id:path}")
+def get_record(category: str, record_id: str):
+    """Load specific record data from a category."""
     try:
-        data = data_service.load_record(record_id)
+        data = data_service.load_record(record_id, category=category)
         # Convert numpy arrays to list for JSON
         signals = data["signals"]
         if hasattr(signals, "tolist"):
@@ -106,11 +121,54 @@ async def analyze_signal(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, api_key: Optional[str] = None):
     """Chat with AI Agent."""
     msg_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
-    response = ai_service.chat_with_ai(msg_dicts, req.signal_context)
+    response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=api_key)
     return {"role": "assistant", "content": response}
+
+@app.get("/api/categories")
+def list_categories():
+    """List available data categories."""
+    try:
+        categories = data_service.list_categories()
+        all_categories = [
+            {"key": "cardiac", "name": "Cardiac Electrical Signals", "icon": "heart"},
+            {"key": "hemodynamic", "name": "Hemodynamic Signals", "icon": "droplet"},
+            {"key": "neurological", "name": "Neurological Signals", "icon": "brain"},
+            {"key": "respiration", "name": "Oxygenation & Respiration", "icon": "wind"},
+            {"key": "motion", "name": "Mechanical & Motion Data", "icon": "activity"}
+        ]
+        # Enhance with count data
+        for cat in all_categories:
+            matching = [c for c in categories if c["key"] == cat["key"]]
+            cat["record_count"] = matching[0]["record_count"] if matching else 0
+        return {"categories": all_categories}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/data/category/{category}")
+def list_data_by_category(category: str):
+    """List patient records in a specific category."""
+    try:
+        records = data_service.list_patients(category=category)
+        return {"category": category, "count": len(records), "records": records}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/recommend-databases")
+def recommend_databases(req: DatabaseRecommendationRequest, api_key: Optional[str] = None):
+    """Get AI-powered database recommendations."""
+    try:
+        recommendations = ai_service.recommend_databases(
+            req.user_role, 
+            req.category, 
+            req.user_interest,
+            api_key=api_key
+        )
+        return {"recommendations": recommendations}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

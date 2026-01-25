@@ -128,3 +128,60 @@ def chat_with_ai(messages, signal_context=None, api_key=None):
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
+
+def recommend_databases(user_role, category, user_interest=None, api_key=None):
+    """
+    Recommends PhysioNet databases based on user role, category, and interest.
+    Returns a list of database recommendations with slug, name, and description.
+    """
+    client, msg = get_genai_client(api_key)
+    if not client:
+        return [{"error": "config_error", "message": msg}]
+    
+    category_descriptions = {
+        "cardiac": "Cardiac Electrical Signals (ECG, EGM, Fetal ECG, VCG)",
+        "hemodynamic": "Hemodynamic Signals (ABP, PAP, CVP, ICP)",
+        "neurological": "Neurological Signals (EEG, Evoked Potentials, EMG)",
+        "respiration": "Oxygenation & Respiration (PPG, Respiration Waveforms)",
+        "motion": "Mechanical & Motion Data (Gait Dynamics, Accelerometry)"
+    }
+    
+    prompt = f"""
+    You are an expert on PhysioNet databases.
+    
+    User Profile:
+    - Role: {user_role} (e.g., medical student, researcher, clinician)
+    - Category of Interest: {category_descriptions.get(category, category)}
+    - Specific Interest: {user_interest or 'General exploration in this category'}
+    
+    Please recommend exactly 3 high-quality, open-access PhysioNet databases that:
+    1. Match the category "{category}"
+    2. Are appropriate for the user's role and expertise level
+    3. Are relevant to their specific interest (if provided)
+    
+    For each database, provide:
+    - "name": Full database name
+    - "slug": Short identifier used for wfdb (e.g., 'ptbdb', 'mitdb', 'eegmmidb')
+    - "description": 1-2 sentence explanation of why it's suitable for this user
+    - "category": The category key (cardiac, neurological, hemodynamic, respiration, or motion)
+    
+    Return as a valid JSON array. Do NOT wrap in markdown code blocks.
+    """
+    
+    try:
+        response = call_genai_with_retry(client, 'gemini-3-flash-preview', [prompt])
+        text = response.text.strip()
+        
+        # Clean markdown
+        if text.startswith("```json"): text = text[7:]
+        if text.startswith("```"): text = text[3:]
+        if text.endswith("```"): text = text[:-3]
+        
+        recommendations = json.loads(text)
+        return recommendations
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI recommendation: {e}")
+        return [{"error": "parse_error", "message": "AI returned invalid JSON"}]
+    except Exception as e:
+        logger.error(f"Database recommendation failed: {e}")
+        return [{"error": "api_error", "message": str(e)}]
