@@ -6,7 +6,7 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from ai_agent import analyze_ecg, recommend_databases
+from ai_agent import analyze_signal, recommend_databases
 
 class TestAIAgent(unittest.TestCase):
 
@@ -14,7 +14,7 @@ class TestAIAgent(unittest.TestCase):
     @patch('ai_agent.Image.open')
     @patch('ai_agent.os.getenv')
     @patch('ai_agent.st.secrets', new_callable=dict) # Mock secrets
-    def test_analyze_ecg_full_mode(self, mock_secrets, mock_getenv, mock_img_open, mock_genai):
+    def test_analyze_signal_full_mode(self, mock_secrets, mock_getenv, mock_img_open, mock_genai):
         # Setup
         mock_getenv.return_value = "fake_key"
         
@@ -24,7 +24,7 @@ class TestAIAgent(unittest.TestCase):
         mock_client.models.generate_content.return_value.text = "Analysis Result"
         
         # Run
-        result = analyze_ecg(None, user_notes="Some notes", mode="full")
+        result = analyze_signal(None, user_notes="Some notes", mode="full", signal_type="Cardiac")
         
         # Verify
         mock_genai.Client.assert_called_with(api_key="fake_key")
@@ -37,19 +37,39 @@ class TestAIAgent(unittest.TestCase):
         prompt_text = contents[0]
         
         self.assertIn("The user has provided the following observations/hints: \"Some notes\"", prompt_text)
+        self.assertIn("expert cardiologist", prompt_text) # Check persona
         self.assertIn("Please perform the full clinical analysis", prompt_text)
 
     @patch('ai_agent.genai')
     @patch('ai_agent.Image.open')
     @patch('ai_agent.os.getenv')
-    def test_analyze_ecg_hints_mode(self, mock_getenv, mock_img_open, mock_genai):
+    def test_analyze_signal_neuro_persona(self, mock_getenv, mock_img_open, mock_genai):
+        # Setup
+        mock_getenv.return_value = "fake_key"
+        mock_client = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        
+        # Run with Neuro context
+        analyze_signal(None, user_notes="", mode="full", signal_type="Neuro")
+        
+        # Check prompt content logic
+        kwargs = mock_client.models.generate_content.call_args
+        prompt_text = kwargs.kwargs['contents'][0]
+        
+        self.assertIn("expert neurologist", prompt_text)
+        self.assertIn("Neuro signal", prompt_text)
+
+    @patch('ai_agent.genai')
+    @patch('ai_agent.Image.open')
+    @patch('ai_agent.os.getenv')
+    def test_analyze_signal_hints_mode(self, mock_getenv, mock_img_open, mock_genai):
         # Setup
         mock_getenv.return_value = "fake_key"
         mock_client = MagicMock()
         mock_genai.Client.return_value = mock_client
         
         # Run
-        analyze_ecg(None, user_notes="", mode="hints")
+        analyze_signal(None, user_notes="", mode="hints", signal_type="Cardiac")
         
         # Check prompt content
         kwargs = mock_client.models.generate_content.call_args
@@ -62,7 +82,7 @@ class TestAIAgent(unittest.TestCase):
     @patch('ai_agent.genai')
     @patch('ai_agent.Image.open')
     @patch('ai_agent.os.getenv')
-    def test_analyze_ecg_quiz_mode(self, mock_getenv, mock_img_open, mock_genai):
+    def test_analyze_signal_quiz_mode(self, mock_getenv, mock_img_open, mock_genai):
         # Setup
         mock_getenv.return_value = "fake_key"
         mock_client = MagicMock()
@@ -73,7 +93,7 @@ class TestAIAgent(unittest.TestCase):
         mock_client.models.generate_content.return_value.text = mock_response
         
         # Run
-        result = analyze_ecg(None, user_notes="", mode="quiz")
+        result = analyze_signal(None, user_notes="", mode="quiz")
         
         # Verify
         self.assertIsInstance(result, list)
@@ -90,7 +110,7 @@ class TestAIAgent(unittest.TestCase):
     @patch('ai_agent.genai')
     @patch('ai_agent.Image.open')
     @patch('ai_agent.os.getenv')
-    def test_analyze_ecg_rate_limit(self, mock_getenv, mock_img_open, mock_genai):
+    def test_analyze_signal_rate_limit(self, mock_getenv, mock_img_open, mock_genai):
         # Setup
         mock_getenv.return_value = "fake_key"
         mock_client = MagicMock()
@@ -100,11 +120,11 @@ class TestAIAgent(unittest.TestCase):
         mock_client.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED")
         
         # Run Normal Mode
-        result = analyze_ecg(None, user_notes="", mode="full")
-        self.assertIn("AI Quota Exceeded", result)
+        result = analyze_signal(None, user_notes="", mode="full")
+        self.assertIn("AI Daily Quota Exceeded", result)
         
         # Run Quiz Mode
-        result_quiz = analyze_ecg(None, user_notes="", mode="quiz")
+        result_quiz = analyze_signal(None, user_notes="", mode="quiz")
         self.assertIsInstance(result_quiz, dict)
         self.assertEqual(result_quiz['error'], "quota_exceeded")
         self.assertIn("AI Daily Quota Exceeded", result_quiz['message'])

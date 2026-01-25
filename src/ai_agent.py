@@ -9,6 +9,11 @@ from google.genai import types
 import os
 import streamlit as st
 from PIL import Image
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def get_genai_client():
     """Configures and returns the Gemini API Client."""
@@ -17,15 +22,16 @@ def get_genai_client():
     # Check Streamlit secrets
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-    except FileNotFoundError:
-        pass
-    except KeyError:
-        pass
+        logger.info("API Key found in Streamlit secrets.")
+    except (FileNotFoundError, KeyError):
+        logger.warning("Secrets file not found or GOOGLE_API_KEY not found in secrets. Trying environtment variable.")
         
     # Check Environment Variable
     if not api_key:
         api_key = os.getenv("GOOGLE_API_KEY")
-
+        if api_key:
+            logger.info("API Key found in environment variable.")
+            
     # Check User Session State (Public Demo Mode)
     if not api_key:
         api_key = st.session_state.get("USER_GOOGLE_API_KEY")
@@ -36,13 +42,16 @@ def get_genai_client():
     try:
         client = genai.Client(api_key=api_key)
         return client, "Success"
+    except ValueError as e:
+        return None, f"ValueError: {str(e)}"
     except Exception as e:
-        return None, f"Configuration Error: {str(e)}"
+        return None, f"Unexpected Configuration Error: {str(e)}"
 
-def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"):
+def analyze_signal(image_bytes, user_notes=None, patient_metadata=None, mode="full", signal_type="Cardiac"):
     """
-    Sends the ECG image and optional user notes to Gemini 3 for analysis.
+    Sends the signal image and optional user notes to Gemini 3 for analysis.
     mode: "full" (default) for complete diagnosis, "hints" for educational guidance.
+    signal_type: "Cardiac", "Neuro", "Hemodynamic", "Respiration", "Motion", or "General".
     """
     
     client, msg = get_genai_client()
@@ -53,18 +62,29 @@ def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"
     
     notes_segment = f'The user has provided the following observations/hints: "{user_notes}"' if user_notes else "The user has provided no specific observations."
     
+    # Define Persona based on Signal Type
+    personas = {
+        "Cardiac": "expert cardiologist",
+        "Neuro": "expert neurologist/neurophysiologist",
+        "Hemodynamic": "expert intensivist/critical care specialist",
+        "Respiration": "expert pulmonologist",
+        "Motion": "expert biomechanist/sports scientist",
+        "General": "expert data scientist specializing in physiological signals"
+    }
+    expert_persona = personas.get(signal_type, personas["General"])
+    
     if mode == "hints":
-        instruction_segment = """
+        instruction_segment = f"""
         The user is a student who is unsure where to start. 
         Please provide **HINTS ONLY**.
-        1. Point out 3 specific visual features in the ECG that are abnormal or noteworthy (e.g., "Look closely at the PR interval in Lead II").
-        2. Ask a guiding question to help the user figure out the diagnosis.
+        1. Point out 3 specific visual features in the {signal_type} signal that are abnormal or noteworthy.
+        2. Ask a guiding question to help the user figure out the conclusion.
         3. **DO NOT** state the final diagnosis or conclusion. Keep it open-ended.
         """
     elif mode == "quiz":
         instruction_segment = """
         The user wants to test their knowledge with a multiple-choice quiz.
-        Please provide exactly 3 potential diagnoses:
+        Please provide exactly 3 potential diagnoses/conclusions:
         - 1 must be the Correct diagnosis.
         - 2 must be plausible Distractors (incorrect but tricky).
         
@@ -76,19 +96,19 @@ def analyze_ecg(image_bytes, user_notes=None, patient_metadata=None, mode="full"
         Do NOT wrap the JSON in markdown code blocks. Just return the raw JSON string.
         """
     else:
-        instruction_segment = """
+        instruction_segment = f"""
         Please perform the full clinical analysis:
-        1. Analyze the visual features of the standard 12-lead ECG provided in the image.
-        2. detailed findings on Rhythm, Rate, Axis, Hypertrophy, Ischemia/Infarction.
-        3. Provide your primary diagnosis and differential diagnosis.
+        1. Analyze the visual features of the generic {signal_type} signal recording provided in the image.
+        2. Determine key parameters relevant to {signal_type} (e.g. rate, rhythm, amplitude, morphology).
+        3. Provide your primary conclusion/diagnosis and differentials.
         4. Address any observations mentioned by the user if relevant.
         5. Be concise, educational, and supportive.
         """
     
     prompt = f"""
-    You are an expert cardiologist AI assistant.
+    You are an {expert_persona} AI assistant.
     
-    I have an ECG recording from a patient.
+    I have a {signal_type} signal recording from a patient.
     Patient Metadata: {patient_metadata if patient_metadata else 'None provided'}
     
     {notes_segment}

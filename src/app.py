@@ -8,8 +8,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from data_loader import download_sample_data, get_available_patients, load_patient_data, clean_data_directory, DEFAULT_DATA_DIR
-from visualizer import plot_ecg_signals, convert_plot_to_image
-from ai_agent import analyze_ecg
+from visualizer import plot_generic_signals, convert_plot_to_image
+from ai_agent import analyze_signal
 import os
 import logging
 
@@ -63,12 +63,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title(f"{HEART_ICON} DeepPulse: AI ECG Assistant")
-st.markdown("### 12-Lead ECG Analysis & Educational Platform")
+st.title(f"{HEART_ICON} DeepPulse: Physiological Explorer")
+st.markdown("### AI-Powered Multi-Signal Analysis Platform")
 
 # Sidebar
 with st.sidebar:
     st.header("Settings")
+    
+    # Initialize active data directory from session state (needed for download/list logic)
+    active_data_dir = st.session_state.get('custom_data_path', None)
+    if active_data_dir == '': active_data_dir = None
+    if not active_data_dir:
+        logging.info("Using default data directory for initialization.")
+    else:
+        logging.info(f"Using custom data directory: {active_data_dir}")
     
     # Check if system key exists
     has_system_key = False
@@ -89,50 +97,64 @@ with st.sidebar:
             st.success("Key saved!")
     
     st.divider()
-    st.header("Data Settings")
     
-    # Custom Data Path
-    custom_path = st.text_input("Custom Data Directory (Optional)", 
-                              value=st.session_state.get('custom_data_path', ''),
-                              placeholder="e.g. /Users/name/my_ecg_data")
+    # --- NEW: Domain Selector ---
+    st.header("Signal Domain")
+    signal_type = st.selectbox(
+        "Select Analysis Mode",
+        ["Cardiac", "Neuro", "Hemodynamic", "Respiration", "Motion", "General"],
+        index=0,
+        help="Selects the AI specialist persona and visualization template."
+    )
+    st.caption(f"Activating {signal_type} Analysis Protocols...")
     
-    if custom_path:
-        st.session_state['custom_data_path'] = custom_path
-        active_data_dir = custom_path
-        logging.info(f"Using custom data: {custom_path}")
-    else:
-        active_data_dir = None # Use default
-        logging.info(f"Using default data directory: {DEFAULT_DATA_DIR}")
-    
-    # Data Management
-    with st.popover(f"{TRASH_ICON} Clear All Downloaded Data"):
-        st.write("Are you sure you want to clear all downloaded data?")
-        if st.button("Yes, delete everything", type="primary"):
-            clean_data_directory(data_dir=active_data_dir)
-            st.success("Data directory cleared.")
-            st.rerun()
+
 
     st.divider()
     st.header("Database & Downloads")
     
     # 1. Ask AI for Recommendation
     st.markdown("#### 1. Find Data")
-    user_interest = st.text_input("I am interested in...", placeholder="e.g. Tachycardia, Ablation, Atrial Fibrillation")
+    
+    # Dynamic Suggestions based on domain
+    suggestions = {
+        "Cardiac": ["Atrial Fibrillation", "Myocardial Infarction", "Heart Failure", "PVC"],
+        "Neuro": ["Epilepsy", "Sleep Stages", "Motor Imagery", "Seizure"],
+        "Hemodynamic": ["Hypertension", "ICU Monitoring", "Blood Pressure"],
+        "Respiration": ["Sleep Apnea", "COPD", "Breath Rate"],
+        "Motion": ["Gait Analysis", "Parkinson's", "Tremor"],
+        "General": ["Physiological Stress", "Polygraph"]
+    }
+    
+    topic_list = suggestions.get(signal_type, [])
+    st.info(f"Welcome to the {signal_type} Workspace. Try searching for topics like:")
+    st.markdown(f"_{', '.join(topic_list)}_")
+    
+    user_interest = st.text_input("I am interested in...", placeholder=f"e.g. {topic_list[0] if topic_list else 'Data'}")
     
     if st.button(f"{SEARCH_ICON} Ask AI for Databases"):
         if not user_interest:
             st.warning("Please enter a topic first.")
         else:
-            with st.spinner("Consulting PhysioNet Expert..."):
+            with st.spinner(f"Consulting {signal_type} Expert..."):
                 from ai_agent import recommend_databases
-                recs = recommend_databases(user_interest)
+                # Append context to search
+                search_query = f"{signal_type} data: {user_interest}"
+                recs = recommend_databases(search_query)
                 st.session_state['db_recommendations'] = recs
     
     # 2. Select Database
     recs = st.session_state.get('db_recommendations', [])
     
-    # Standard choice if no AI results yet
-    default_db = {'name': 'PTB Diagnostic ECG Database', 'slug': 'ptbdb', 'description': 'Standard 12-lead ECGs'}
+    # Standard defaults based on type
+    if signal_type == "Cardiac":
+        default_db = {'name': 'PTB Diagnostic ECG Database', 'slug': 'ptbdb', 'description': 'Standard 12-lead ECGs'}
+    elif signal_type == "Neuro":
+        default_db = {'name': 'EEG Motor Movement/Imagery Dataset', 'slug': 'eegmmidb', 'description': 'Standard EEG clips'}
+    elif signal_type == "Motion":
+        default_db = {'name': 'Gait in Neurodegenerative Disease', 'slug': 'gaitndd', 'description': 'Force platform data'}
+    else:
+        default_db = {'name': 'Fantasia Database', 'slug': 'fantasia', 'description': 'ECG and Respiration'}
     
     # Flatten options for selectbox
     db_options = [default_db] + [r for r in recs if r['slug'] != 'error']
@@ -182,6 +204,30 @@ with st.sidebar:
     else:
         selected_patient = st.selectbox("Select Patient Record", patients)
 
+    st.divider()
+    st.header("Data Settings")
+    
+    # Custom Data Path
+    custom_path = st.text_input("Custom Data Directory (Optional)", 
+                              value=st.session_state.get('custom_data_path', ''),
+                              placeholder="e.g. /Users/name/my_ecg_data")
+    
+    if custom_path:
+        st.session_state['custom_data_path'] = custom_path
+        active_data_dir = custom_path
+        logging.info(f"Using custom data: {custom_path}")
+    else:
+        active_data_dir = None # Use default
+        logging.info(f"Using default data directory: {DEFAULT_DATA_DIR}")
+    
+    # Data Management
+    with st.popover(f"{TRASH_ICON} Clear All Downloaded Data"):
+        st.write("Are you sure you want to clear all downloaded data?")
+        if st.button("Yes, delete everything", type="primary"):
+            clean_data_directory(data_dir=active_data_dir)
+            st.success("Data directory cleared.")
+            st.rerun()
+
 # Main Content
 if selected_patient:
     try:
@@ -222,8 +268,10 @@ if selected_patient:
                  for note in full_history:
                      st.caption(f"- {note}")
 
-        st.subheader("12-Lead ECG Viewer")
-        fig = plot_ecg_signals(signals, fields)
+        st.subheader(f"{signal_type} Signal Viewer")
+        
+        # --- NEW: Use Generic Plotter ---
+        fig = plot_generic_signals(signals, fields, signal_type=signal_type)
         st.pyplot(fig)
         
         st.divider()
@@ -275,12 +323,13 @@ if selected_patient:
                     meta_str = f"Age: {age}, Sex: {sex}"
 
                     if active_mode == "quiz":
-                        st.subheader("Select the most likely diagnosis:")
+                        st.subheader("Select the most likely conclusion:")
                         
                         # Generate or retrieve options
                         if 'quiz_options' not in st.session_state:
                             with st.spinner("Generating quiz options..."):
-                                response = analyze_ecg(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode="quiz")
+                                # --- NEW: Pass signal_type ---
+                                response = analyze_signal(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode="quiz", signal_type=signal_type)
                                 if isinstance(response, dict) and "error" in response:
                                     st.warning(response['message'])
                                     st.session_state['quiz_options'] = []
@@ -295,34 +344,37 @@ if selected_patient:
                         # Render Options
                         options = st.session_state.get('quiz_options', [])
                         for item in options:
-                            # Use a container for visual grouping
                             with st.container():
-                                # Unique key required for buttons in loop
                                 if st.button(f"{POINTER_RIGHT_ICON} {item['diagnosis']}", key=f"quiz_btn_{item['diagnosis']}"):
-                                    # 1. Feedback
+                                    # Feedback
                                     if item['is_correct']:
                                         st.balloons()
                                         st.success(f"**Correct!** {item['explanation']}")
                                     else:
                                         st.error(f"**Incorrect.** {item['explanation']}")
                                     
-                                    # 2. Trigger Full Analysis automatically
+                                    # Trigger Full Analysis
                                     st.markdown("---")
-                                    st.subheader(f"{ROCKET_ICON} Detailed Analysis for *{item['diagnosis']}*")
+                                    st.subheader(f"{ROCKET_ICON} Detailed Analysis")
                                     with st.spinner("Analyzing details..."):
-                                        # Pass the user's choice as the 'note'
                                         notes_context = f"User selected '{item['diagnosis']}' in quiz mode. User notes: {user_notes}"
-                                        full_analysis = analyze_ecg(img_buf, user_notes=notes_context, patient_metadata=meta_str, mode="full")
+                                        # --- NEW: Pass signal_type ---
+                                        full_analysis = analyze_signal(img_buf, user_notes=notes_context, patient_metadata=meta_str, mode="full", signal_type=signal_type)
                                         st.markdown(full_analysis)
 
                     elif active_mode in ["hints", "full"]:
                         # Standard single-shot analysis
-                        label = "Providing hints..." if active_mode == "hints" else "DeepPulse AI is analyzing the waveform..."
+                        label = "Providing hints..." if active_mode == "hints" else f"DeepPulse AI ({signal_type} Specialist) is analyzing..."
                         with st.spinner(label):
-                             response = analyze_ecg(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode=active_mode)
+                             # --- NEW: Pass signal_type ---
+                             response = analyze_signal(img_buf, user_notes=user_notes, patient_metadata=meta_str, mode=active_mode, signal_type=signal_type)
                              st.markdown(response)
 
     except Exception as e:
-        st.error(f"Error loading record: {e}")
+        if "sampto must be greater than sampfrom" in str(e):
+            st.error(f"{WARNING_ICON} Error: This record appears to be corrupted or empty. It may have failed to download completely.")
+            st.info("Try deleting the data using the 'Clear All Data' button in the sidebar and downloading again.")
+        else:
+            st.error(f"Error loading record: {e}")
 else:
     st.info(f"{POINTER_LEFT_ICON} Please download sample data and select a patient to begin.")

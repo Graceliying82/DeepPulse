@@ -7,43 +7,31 @@ import matplotlib.pyplot as plt
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from visualizer import plot_ecg_signals
+from visualizer import plot_generic_signals
 
 class TestVisualizer(unittest.TestCase):
     
-    def test_plot_12_lead_structure(self):
-        # Test 12-lead (12 channels)
+    def test_plot_cardiac_structure(self):
+        # Test 12-lead (12 channels) for Cardiac
         signals = np.random.randn(500, 12)
         fields = {'fs': 100, 'sig_name': []}
         
-        fig = plot_ecg_signals(signals, fields)
+        fig = plot_generic_signals(signals, fields, signal_type="Cardiac")
         
         self.assertIsInstance(fig, plt.Figure)
-        # Should have axes. Standard logic creates 12 axes (6x2)
-        # Actually our logic creates 12 subplots.
         self.assertGreaterEqual(len(fig.axes), 12)
         plt.close(fig)
 
-    def test_plot_2_lead_structure(self):
-        # Test 2-lead (dynamic resize)
-        signals = np.random.randn(500, 2)
-        fields = {'fs': 100, 'sig_name': ['I', 'II']}
+    def test_plot_generic_structure(self):
+        # Test Generic (Neuro)
+        signals = np.random.randn(500, 4)
+        fields = {'fs': 100, 'sig_name': ['C3', 'C4', 'O1', 'O2']}
         
-        fig = plot_ecg_signals(signals, fields)
-        
-        self.assertIsInstance(fig, plt.Figure)
-        # Should have at least 2 axes (or more if sharex magic creates hidden ones, but visible ones matter)
-        self.assertGreaterEqual(len(fig.axes), 2)
-        plt.close(fig)
-
-    def test_plot_1_lead_structure(self):
-        # Test 1-lead
-        signals = np.random.randn(500, 1)
-        fields = {'fs': 100, 'sig_name': ['I']}
-        
-        fig = plot_ecg_signals(signals, fields)
+        fig = plot_generic_signals(signals, fields, signal_type="Neuro")
         
         self.assertIsInstance(fig, plt.Figure)
+        # Generic layout uses 1 col, 4 rows = 4 axes
+        self.assertGreaterEqual(len(fig.axes), 4)
         plt.close(fig)
 
 if __name__ == '__main__':

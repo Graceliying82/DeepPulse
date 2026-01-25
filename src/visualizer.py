@@ -12,12 +12,18 @@ SUBPLOT_WIDTH = 20
 SUBPLOT_HEIGHT_PER_ROW = 2.5 # Default for dynamic rows
 SUBPLOT_HEIGHT_12_LEAD = 12
 
-def plot_ecg_signals(signals, fields):
+def plot_generic_signals(signals, fields, signal_type="Cardiac"):
     """
-    Plots ECG signals with a dynamic layout based on channel count.
-    signals: numpy array of shape (samples, channels)
-    fields: dict containing metadata (fs, sig_name, units, etc.)
-    returns: matplotlib figure
+    Plots signals using strict medical styling for Cardiac (ECG) or generic styling for others.
+    """
+    if signal_type == "Cardiac":
+        return plot_ecg_standard(signals, fields)
+    else:
+        return plot_generic_layout(signals, fields)
+
+def plot_ecg_standard(signals, fields):
+    """
+    Strict 12-Lead ECG Layout: 25mm/s, 10mm/mV.
     """
     num_signals = signals.shape[1]
     
@@ -36,9 +42,9 @@ def plot_ecg_signals(signals, fields):
          # Stack vertically for small number of leads (e.g., 1, 2, 3)
         rows = num_signals
         cols = 1
-        figsize = (15, 3 * rows) # Keep this custom for single col for now or use constant ratio
+        figsize = (15, 3 * rows)
     else:
-        # General case: 2 columns
+        # General case (e.g. 15-lead): 2 columns
         cols = 2
         rows = int(np.ceil(num_signals / 2))
         figsize = (SUBPLOT_WIDTH, SUBPLOT_HEIGHT_PER_ROW * rows)
@@ -47,12 +53,12 @@ def plot_ecg_signals(signals, fields):
     if num_signals > 1:
         axes = axes.flatten()
     else:
-        axes = [axes] # Ensure it's substantial
+        axes = [axes] 
     
     fs = fields.get('fs', 1000)
     time = np.arange(signals.shape[0]) / fs
     
-    # Limit to 10 seconds default
+    # Limit to 10 seconds default for ECG
     max_samples = int(10 * fs)
     if signals.shape[0] > max_samples:
         plot_signals = signals[:max_samples, :]
@@ -105,12 +111,10 @@ def plot_ecg_signals(signals, fields):
         ax.tick_params(axis='both', which='both', length=0, labelsize=0)
 
         # X-label on bottom plot(s)
-        # Logic depends on col count.
         is_bottom = False
         if cols == 1:
             if i == num_signals - 1: is_bottom = True
         else:
-            # If 2 cols, bottom ones are last 2 indices (or if odd, last 1)
             row_idx = i // cols
             if row_idx == rows - 1: is_bottom = True
             
@@ -121,6 +125,61 @@ def plot_ecg_signals(signals, fields):
     # Hide unused axes
     for i in range(num_signals, len(axes)):
         axes[i].axis('off')
+
+    plt.tight_layout()
+    return fig
+
+def plot_generic_layout(signals, fields):
+    """
+    Flexible layout for non-standard signals (EEG, Gait, etc.)
+    Independent scaling, simple grid.
+    """
+    num_signals = signals.shape[1]
+    
+    # Try to identify channel names
+    ch_names = fields.get('sig_name', [])
+    if not ch_names:
+        ch_names = [f"Ch {i+1}" for i in range(num_signals)]
+    
+    # Stack vertically (standard for EEG/Polygraphy)
+    rows = num_signals
+    cols = 1
+    # Limit to max 16 rows to prevent crashing display, page if needed
+    if rows > 16: rows = 16 
+    
+    figsize = (15, 1.5 * rows) # Smaller height per row for high channel count
+
+    fig, axes = plt.subplots(rows, cols, figsize=figsize, sharex=True)
+    if num_signals > 1:
+        axes = axes.flatten()
+    else:
+        axes = [axes]
+    
+    fs = fields.get('fs', 256)
+    time = np.arange(signals.shape[0]) / fs
+    
+    # Plot each signal
+    for i in range(min(num_signals, 16)):
+        ax = axes[i]
+        
+        signal = signals[:, i]
+        ch_name = ch_names[i] if i < len(ch_names) else f"Ch {i+1}"
+        
+        # Auto-scale
+        ax.plot(time, signal, color='navy', linewidth=0.8)
+        
+        # Simple Grid
+        ax.grid(linestyle='--', linewidth=0.5, alpha=0.5)
+        
+        # Label to the left of the plot
+        ax.set_ylabel(ch_name, rotation=0, labelpad=50, fontsize=9, fontweight='bold')
+        
+        # Remove top/right spines
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        
+        if i == min(num_signals, 16) - 1:
+            ax.set_xlabel('Time (s)')
 
     plt.tight_layout()
     return fig
