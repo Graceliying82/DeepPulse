@@ -15,6 +15,25 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import time
+
+def call_genai_with_retry(client, model, contents, retries=3, delay=2):
+    """
+    Helper to call Gemini API with retry logic for transient errors (503/Overloaded).
+    """
+    for attempt in range(retries):
+        try:
+            response = client.models.generate_content(model=model, contents=contents)
+            return response
+        except Exception as e:
+            err_str = str(e)
+            # Check for 503/Overloaded
+            if "503" in err_str or "Overloaded" in err_str or "UNAVAILABLE" in err_str:
+                if attempt < retries - 1:
+                    time.sleep(delay * (attempt + 1)) # Simple backoff
+                    continue
+            raise e # Re-raise if not retryable or ran out of retries
+
 def get_genai_client():
     """Configures and returns the Gemini API Client."""
     api_key = None
@@ -120,11 +139,8 @@ def analyze_signal(image_bytes, user_notes=None, patient_metadata=None, mode="fu
     
 
     try:
-        # New SDK usage
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview', 
-            contents=[prompt, img]
-        )
+        # New SDK usage with retry
+        response = call_genai_with_retry(client, 'gemini-3-flash-preview', [prompt, img])
         
         if mode == "quiz":
             import json
@@ -143,9 +159,12 @@ def analyze_signal(image_bytes, user_notes=None, patient_metadata=None, mode="fu
         err_str = str(e)
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
             msg = "⚠️ AI Daily Quota Exceeded. You have used up your free tier requests for today. Please try again tomorrow or upgrade your plan."
-            if mode == "quiz":
-                return {"error": "quota_exceeded", "message": msg}
-            return msg
+            return {"error": "quota_exceeded", "message": msg} if mode == "quiz" else msg
+            
+        if "503" in err_str or "Overloaded" in err_str or "UNAVAILABLE" in err_str:
+             msg = "⚠️ The AI service is currently overloaded. Please wait a moment and try again."
+             return {"error": "overloaded", "message": msg} if mode == "quiz" else msg
+
         return f"AI Analysis Failed: {err_str}"
 
 def recommend_databases(user_interest):
@@ -171,8 +190,9 @@ def recommend_databases(user_interest):
     """
     
     try:
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
+        response = call_genai_with_retry(
+            client,
+            'gemini-3-flash-preview',
             contents=prompt
         )
         import json
