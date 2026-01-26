@@ -1,30 +1,121 @@
+/* =============================================================================
+   DeepPulse - Unified Stylesheet
+   All component styles consolidated for easier maintenance
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   1. CSS Variables & Theme
+   ----------------------------------------------------------------------------- */
 :root {
   --bg-dark: #0f1115;
   --bg-panel: rgba(22, 27, 34, 0.7);
   --primary-glow: #00f2ff;
   --accent-glow: #ff0055;
-  --text-primary: #e6e6e6;
+  --text-primary: #E3E3E3;
   --text-secondary: #a1a1aa;
   --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --chat-panel-width: 350px;
 }
 
+/* -----------------------------------------------------------------------------
+   2. Base & Reset
+   ----------------------------------------------------------------------------- */
 body {
   margin: 0;
   background-color: var(--bg-dark);
   color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
-  overflow: hidden; /* App style */
+  overflow: hidden;
 }
 
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 24px;
+}
+
+p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+/* -----------------------------------------------------------------------------
+   3. Layout - App Container Grid
+   ----------------------------------------------------------------------------- */
 .app-container {
   display: grid;
-  grid-template-columns: 80px 1fr 350px;
+  grid-template-columns: 80px 1fr auto var(--chat-panel-width);
   height: 100vh;
   width: 100vw;
   background: radial-gradient(circle at 10% 20%, rgba(0, 0, 0, 0.8) 0%, var(--bg-dark) 90%);
 }
 
-/* Sidebar */
+/* GPU hints during resize */
+.panel-resizing .main-content,
+.panel-resizing .right-panel {
+  will-change: width;
+}
+
+.panel-resizing .main-content>*,
+.panel-resizing .right-panel>* {
+  pointer-events: none;
+}
+
+.main-content {
+  padding: 30px;
+  overflow-y: auto;
+  position: relative;
+}
+
+.right-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  border-left: var(--glass-border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* -----------------------------------------------------------------------------
+   4. Shared Components - Glass Panel
+   ----------------------------------------------------------------------------- */
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(10px);
+  border: var(--glass-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+}
+
+.loading-overlay,
+.empty-state {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+/* -----------------------------------------------------------------------------
+   5. Sidebar Navigation
+   ----------------------------------------------------------------------------- */
 .sidebar {
   background: var(--bg-panel);
   backdrop-filter: blur(12px);
@@ -49,20 +140,17 @@ body {
   transition: all 0.3s ease;
 }
 
-.nav-icon:hover, .nav-icon.active {
+.nav-icon:hover,
+.nav-icon.active {
   background: rgba(255, 255, 255, 0.05);
   color: var(--primary-glow);
   box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
   border: 1px solid rgba(0, 242, 255, 0.3);
 }
 
-/* Main Content */
-.main-content {
-  padding: 30px;
-  overflow-y: auto;
-  position: relative;
-}
-
+/* -----------------------------------------------------------------------------
+   6. Dashboard
+   ----------------------------------------------------------------------------- */
 .dashboard-grid {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -70,30 +158,309 @@ body {
   height: 100%;
 }
 
-.glass-panel {
-  background: var(--bg-panel);
-  backdrop-filter: blur(10px);
-  border: var(--glass-border);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+.patient-select {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  min-width: 250px;
+  outline: none;
 }
 
-/* Right Panel (Chat) */
-.right-panel {
-  background: var(--bg-panel);
-  backdrop-filter: blur(12px);
-  border-left: var(--glass-border);
-  padding: 0;
+.action-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.action-btn.primary {
+  background: rgba(0, 242, 255, 0.15);
+  border-color: rgba(0, 242, 255, 0.3);
+  color: var(--primary-glow);
+}
+
+.action-btn.primary:hover {
+  background: rgba(0, 242, 255, 0.25);
+  box-shadow: 0 0 15px rgba(0, 242, 255, 0.1);
+}
+
+/* -----------------------------------------------------------------------------
+   7. Chat Assistant
+   ----------------------------------------------------------------------------- */
+.chat-container {
+  box-sizing: border-box;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  padding: 10px;
+  gap: 10px;
+  overflow: hidden;
 }
 
-/* Typography & Elements */
-h1, h2, h3 { margin: 0; font-weight: 600; }
-h1 { font-size: 24px; color: var(--text-primary); }
-p { color: var(--text-secondary); font-size: 14px; }
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+.chat-header h3 {
+  font-size: 16px;
+}
+
+.header-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 5px;
+}
+
+.message {
+  display: flex;
+  gap: 10px;
+  max-width: 85%;
+}
+
+.message.assistant {
+  gap: 8px;
+}
+
+.message.user {
+  align-self: flex-end;
+  justify-content: flex-end;
+  gap: 0;
+  width: fit-content;
+}
+
+.bubble {
+  word-wrap: break-word;
+}
+
+/* Assistant bubble */
+.message.assistant .bubble {
+  background: transparent;
+  border: none;
+  padding: 2px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.message.assistant .bubble p {
+  margin: 0 0 12px;
+}
+
+.message.assistant .bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.message.assistant .bubble ul,
+.message.assistant .bubble ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.message.assistant .bubble li {
+  margin: 6px 0;
+}
+
+.message.assistant .bubble strong {
+  font-weight: 600;
+  color: #fff;
+}
+
+/* User bubble */
+.message.user .bubble {
+  display: inline-block;
+  background-color: #282A2C;
+  color: #e6e6e6;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  border-bottom-right-radius: 4px;
+  padding: 6px 12px;
+  line-height: 1.5;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.message.user .bubble p {
+  margin: 0;
+  display: inline;
+}
+
+.avatar {
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: flex-start;
+  margin-top: 16px;
+}
+
+.avatar img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.chat-input-area {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.chat-input-area input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  outline: none;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.chat-input-area button {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  color: var(--primary-glow);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.chat-input-area button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+}
+
+.typing-dot {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   8. Resizable Divider
+   ----------------------------------------------------------------------------- */
+.resizable-divider {
+  position: relative;
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 100;
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resizable-divider::before {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+  background: transparent;
+}
+
+.resizable-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+}
+
+.resizable-divider:hover::after,
+.resizable-divider.dragging::after {
+  width: 3px;
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.1), rgba(0, 242, 255, 0.4), rgba(0, 242, 255, 0.1));
+  box-shadow: 0 0 10px rgba(0, 242, 255, 0.3);
+}
+
+.divider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.resizable-divider:hover .divider-handle,
+.resizable-divider.dragging .divider-handle {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(0, 242, 255, 0.2);
+}
+
+.divider-grip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.divider-grip span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: all 0.2s ease;
+}
+
+.resizable-divider:hover .divider-grip span,
+.resizable-divider.dragging .divider-grip span {
+  background: var(--primary-glow);
+  box-shadow: 0 0 6px rgba(0, 242, 255, 0.5);
+}
+
+.resizable-divider.dragging {
+  background: rgba(0, 242, 255, 0.05);
+}

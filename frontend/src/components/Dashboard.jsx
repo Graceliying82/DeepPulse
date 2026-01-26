@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SignalViewer from './SignalViewer';
 import { Download, RefreshCw } from 'lucide-react';
-import './Dashboard.css';
 
 const Dashboard = ({ signalType }) => {
     const [patients, setPatients] = useState([]);

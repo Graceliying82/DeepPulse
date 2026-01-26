@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User } from 'lucide-react';
-import './ChatAssistant.css'; // We'll create this specific CSS
+import geminiIcon from '../assets/gemini.png';
 
 const ChatAssistant = ({ signalType }) => {
     const [messages, setMessages] = useState([
@@ -52,22 +51,31 @@ const ChatAssistant = ({ signalType }) => {
     return (
         <div className="chat-container">
             <div className="chat-header glass-panel">
-                <Bot size={20} color="#00f2ff" />
+                <img src={geminiIcon} alt="AI" className="header-icon" />
                 <h3>AI Assistant</h3>
             </div>
 
             <div className="chat-messages" ref={scrollRef}>
                 {messages.map((m, idx) => (
                     <div key={idx} className={`message ${m.role}`}>
-                        <div className="avatar">
-                            {m.role === 'assistant' ? <Bot size={16} /> : <User size={16} />}
-                        </div>
+                        {m.role === 'assistant' && (
+                            <div className="avatar">
+                                <img src={geminiIcon} alt="AI" />
+                            </div>
+                        )}
                         <div className="bubble">
                             <ReactMarkdown>{m.content}</ReactMarkdown>
                         </div>
                     </div>
                 ))}
-                {loading && <div className="message assistant"><span className="typing-dot">...</span></div>}
+                {loading && (
+                    <div className="message assistant">
+                        <div className="avatar">
+                            <img src={geminiIcon} alt="AI" />
+                        </div>
+                        <div className="bubble"><span className="typing-dot">...</span></div>
+                    </div>
+                )}
             </div>
 
             <div className="chat-input-area glass-panel">
@@ -79,7 +87,7 @@ const ChatAssistant = ({ signalType }) => {
                     placeholder="Ask about the signal..."
                 />
                 <button onClick={handleSend} disabled={loading}>
-                    <Send size={18} />
+                    <span className="material-symbols-outlined">send</span>
                 </button>
             </div>
         </div>
