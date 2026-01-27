@@ -1,12 +1,23 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import ChatAssistant from './components/ChatAssistant'
+import ResizableDivider from './components/ResizableDivider'
 import './App.css'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [activeSignalType, setActiveSignalType] = useState('Cardiac')
+  const [chatPanelWidth, setChatPanelWidth] = useState(350)
+
+  // Sync CSS variable with React state (for when drag ends)
+  useEffect(() => {
+    document.documentElement.style.setProperty('--chat-panel-width', `${chatPanelWidth}px`)
+  }, [chatPanelWidth])
+
+  const handleResize = useCallback((newWidth) => {
+    setChatPanelWidth(newWidth)
+  }, [])
 
   return (
     <div className="app-container">
@@ -26,6 +37,13 @@ function App() {
             Let's make it a persistent right panel for the "Research Assistant" feel. 
         */}
       </main>
+
+      <ResizableDivider
+        onResize={handleResize}
+        minWidth={280}
+        maxWidth={600}
+        defaultWidth={350}
+      />
 
       <div className="right-panel">
         <ChatAssistant signalType={activeSignalType} />
