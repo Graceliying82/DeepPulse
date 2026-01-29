@@ -98,7 +98,7 @@ const SignalViewer = ({ data, type }) => {
                 padding: 20,
                 backgroundColor: '#fefcfb'
             }}>
-                <svg width={totalWidth} height={totalHeight} style={{ display: 'block' }}>
+                <svg className="signal-viewer-svg" width={totalWidth} height={totalHeight} style={{ display: 'block' }}>
                     <defs>
                         {/* Minor grid pattern - every 1mm (thin, light) */}
                         <pattern id="ecg-grid-minor" width={PX_PER_MM} height={PX_PER_MM} patternUnits="userSpaceOnUse">

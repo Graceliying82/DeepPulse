@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SignalViewer from './SignalViewer';
-import { Download, RefreshCw, FileText, X } from 'lucide-react';
+import EducationalPanel from './EducationalPanel';
+import { Download, RefreshCw, FileText, X, GraduationCap } from 'lucide-react';
 
 const Dashboard = ({ signalType }) => {
     const [patients, setPatients] = useState([]);
@@ -11,6 +12,7 @@ const Dashboard = ({ signalType }) => {
     const [showClinicalNotes, setShowClinicalNotes] = useState(false);
     const [formattedNotes, setFormattedNotes] = useState(null);
     const [notesLoading, setNotesLoading] = useState(false);
+    const [showEducational, setShowEducational] = useState(false);
 
     useEffect(() => {
         fetchPatients();
@@ -126,6 +128,23 @@ const Dashboard = ({ signalType }) => {
                         }}>
                             {signalData.comments.length}
                         </span>
+                    </button>
+                )}
+
+                {/* Educational AI Assistant - Only show if signal is loaded */}
+                {signalData && (
+                    <button
+                        className="action-btn"
+                        onClick={() => setShowEducational(true)}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                        title="Learn with AI assistance"
+                    >
+                        <GraduationCap size={16} />
+                        <span style={{ fontSize: '13px' }}>Learn</span>
                     </button>
                 )}
 
@@ -291,6 +310,14 @@ const Dashboard = ({ signalType }) => {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* Educational Panel Modal */}
+            {showEducational && signalData && (
+                <EducationalPanel
+                    signalData={signalData}
+                    onClose={() => setShowEducational(false)}
+                />
             )}
 
             {/* Main Signal View */}
