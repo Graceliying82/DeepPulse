@@ -1,4 +1,4 @@
-# 🫀 DeepPulse: AI-Powered ECG Assistant
+# 🫀 DeepPulse
 
 **DeepPulse** is an advanced educational platform designed to democratize access to expert-level ECG interpretation. By combining medical signal processing with the reasoning capabilities of the Google Gemini 3 AI, DeepPulse acts as an interactive tutor for medical students and cardiology enthusiasts.
 
