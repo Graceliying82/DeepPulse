@@ -98,7 +98,7 @@ const SignalViewer = ({ data, type }) => {
                 padding: 20,
                 backgroundColor: '#fefcfb'
             }}>
-                <svg width={totalWidth} height={totalHeight} style={{ display: 'block' }}>
+                <svg className="signal-viewer-svg" width={totalWidth} height={totalHeight} style={{ display: 'block' }}>
                     <defs>
                         {/* Minor grid pattern - every 1mm (thin, light) */}
                         <pattern id="ecg-grid-minor" width={PX_PER_MM} height={PX_PER_MM} patternUnits="userSpaceOnUse">
@@ -236,21 +236,6 @@ const ECGLeadSubplot = ({ lead, x, y, width, height, durationSeconds, MM_PER_SEC
                 {name}
             </text>
 
-            {/* Y-axis range indicator */}
-            <text x={width - 60} y="15" fontSize="10" fill="#6b7280">
-                ±{yRangeMV.toFixed(1)} mV
-            </text>
-
-            {/* Calibration pulse (1mV, 0.2s) at the beginning */}
-            <CalibrationPulse
-                x={5}
-                y={height / 2}
-                MM_PER_SECOND={MM_PER_SECOND}
-                PX_PER_MM={PX_PER_MM}
-                yRangeMV={yRangeMV}
-                height={height}
-            />
-
             {/* Waveform */}
             <path
                 d={pathData}
@@ -272,38 +257,6 @@ const ECGLeadSubplot = ({ lead, x, y, width, height, durationSeconds, MM_PER_SEC
                 strokeDasharray="4 2"
                 opacity="0.3"
             />
-        </g>
-    );
-};
-
-/**
- * Standard ECG Calibration Pulse (1mV, 0.2s)
- * Shown at the start of each lead for amplitude reference
- */
-const CalibrationPulse = ({ x, y, MM_PER_SECOND, PX_PER_MM, yRangeMV, height }) => {
-    const pulseAmplitude = 1.0; // 1mV standard
-    const pulseDuration = 0.2;  // 0.2s = 200ms standard
-
-    const pulseWidthPX = pulseDuration * MM_PER_SECOND * PX_PER_MM;
-    const pulseHeightPX = (pulseAmplitude / yRangeMV) * (height / 2);
-
-    return (
-        <g>
-            <path
-                d={`M ${x} ${y} L ${x} ${y - pulseHeightPX} L ${x + pulseWidthPX} ${y - pulseHeightPX} L ${x + pulseWidthPX} ${y}`}
-                fill="none"
-                stroke="#059669"
-                strokeWidth="1.5"
-            />
-            <text
-                x={x + pulseWidthPX / 2}
-                y={y - pulseHeightPX - 5}
-                fontSize="8"
-                fill="#059669"
-                textAnchor="middle"
-            >
-                1mV
-            </text>
         </g>
     );
 };

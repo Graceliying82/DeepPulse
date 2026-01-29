@@ -55,6 +55,9 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     signal_context: Optional[str] = None
 
+class FormatNotesRequest(BaseModel):
+    notes: List[str]
+
 
 # --- Routes ---
 
@@ -126,6 +129,15 @@ def chat(req: ChatRequest, api_key: Optional[str] = None):
     msg_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
     response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=api_key)
     return {"role": "assistant", "content": response}
+
+@app.post("/api/ai/format-notes")
+def format_clinical_notes(req: FormatNotesRequest, api_key: Optional[str] = None):
+    """Format clinical notes using AI for human readability."""
+    try:
+        formatted = ai_service.format_clinical_notes(req.notes, api_key=api_key)
+        return {"formatted": formatted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/categories")
 def list_categories():
