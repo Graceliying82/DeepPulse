@@ -185,3 +185,56 @@ def recommend_databases(user_role, category, user_interest=None, api_key=None):
     except Exception as e:
         logger.error(f"Database recommendation failed: {e}")
         return [{"error": "api_error", "message": str(e)}]
+
+def format_clinical_notes(notes, api_key=None):
+    """
+    Use AI to format raw clinical notes into human-readable format.
+    Returns a list of formatted note objects with labels and values.
+    """
+    client, msg = get_genai_client(api_key)
+    if not client:
+        # Fallback to raw display
+        return [{"label": "Clinical Note", "value": note} for note in notes]
+
+    prompt = f"""Parse these medical notes from a PhysioNet ECG database and format them as JSON.
+
+Notes: {json.dumps(notes)}
+
+Rules:
+- "##_F" or "## M" → {{"label": "Patient Demographics", "value": "## years old, Female/Male"}}
+- "### ### x#" (numbers with x) → {{"label": "Record ID", "value": keep as-is}}
+- Medical terms (Diapres, MI, etc.) → {{"label": "Diagnosis", "value": expand abbreviation}}
+- Other text → {{"label": "Clinical Note", "value": original text}}
+
+Return ONLY valid JSON array. Example:
+[{{"label":"Patient Demographics","value":"84 years old, Female"}},{{"label":"Record ID","value":"1525 167 x1"}}]
+
+JSON output:"""
+
+    try:
+        response = call_genai_with_retry(client, 'gemini-2.0-flash-exp', [prompt])
+        text = response.text.strip()
+
+        logger.info(f"AI raw response: {text}")
+
+        # Clean markdown and whitespace
+        text = text.strip()
+        if text.startswith("```json"): text = text[7:]
+        if text.startswith("```"): text = text[3:]
+        if text.endswith("```"): text = text[:-3]
+        text = text.strip()
+
+        logger.info(f"Cleaned text: {text}")
+
+        formatted_notes = json.loads(text)
+        logger.info(f"Successfully parsed {len(formatted_notes)} notes")
+        return formatted_notes
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse formatted notes: {e}")
+        logger.error(f"Raw AI response was: {text if 'text' in locals() else 'N/A'}")
+        # Fallback to raw display
+        return [{"label": "Clinical Note", "value": note} for note in notes]
+    except Exception as e:
+        logger.error(f"Note formatting failed: {e}")
+        # Fallback to raw display
+        return [{"label": "Clinical Note", "value": note} for note in notes]
