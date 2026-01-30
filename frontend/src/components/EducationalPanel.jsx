@@ -1,12 +1,25 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Lightbulb, Brain, GraduationCap } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { X, Lightbulb, Brain, GraduationCap, CheckCircle, Loader } from 'lucide-react';
 import { captureSVGAsImage } from '../utils/signalCapture';
 
-const EducationalPanel = ({ signalData, onClose }) => {
+const EducationalPanel = ({ signalData, onClose, preloadedImage }) => {
     const [mode, setMode] = useState('hints');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    // Cached image blob - use preloaded from parent, or capture if needed
+    const [cachedImageBlob, setCachedImageBlob] = useState(preloadedImage || null);
+    const [imageCapturing, setImageCapturing] = useState(false);
+
+    // Session context - tracks all AI interactions for context continuity
+    const [sessionContext, setSessionContext] = useState({
+        hintsReceived: [],      // Array of hints the user has seen
+        quizAttempts: [],       // Array of {question, userAnswer, correctAnswer, wasCorrect}
+        userDiagnoses: [],      // Array of {diagnosis, feedback}
+        interactionCount: 0     // Total number of AI interactions
+    });
 
     // Hints mode state
     const [hintsResponse, setHintsResponse] = useState(null);
@@ -21,30 +34,105 @@ const EducationalPanel = ({ signalData, onClose }) => {
     const [userDiagnosis, setUserDiagnosis] = useState('');
     const [advancedFeedback, setAdvancedFeedback] = useState(null);
 
-    const svgRef = useRef(null);
+    // Update cached image if preloaded image changes
+    useEffect(() => {
+        if (preloadedImage && !cachedImageBlob) {
+            setCachedImageBlob(preloadedImage);
+            console.log('Using preloaded image from parent:', preloadedImage.size, 'bytes');
+        }
+    }, [preloadedImage]);
 
-    // Capture SVG and call AI analysis
+    // Fallback: capture image if not preloaded (should rarely happen)
+    useEffect(() => {
+        const captureImage = async () => {
+            if (cachedImageBlob || preloadedImage) return; // Already have image
+
+            setImageCapturing(true);
+            try {
+                const svgElement = document.querySelector('.signal-viewer-svg');
+                if (svgElement) {
+                    const blob = await captureSVGAsImage(svgElement);
+                    setCachedImageBlob(blob);
+                    console.log('Image captured as fallback:', blob.size, 'bytes');
+                }
+            } catch (err) {
+                console.error('Failed to capture image:', err);
+            } finally {
+                setImageCapturing(false);
+            }
+        };
+
+        // Small delay to allow any preloaded image to be set
+        const timer = setTimeout(captureImage, 100);
+        return () => clearTimeout(timer);
+    }, [cachedImageBlob, preloadedImage]);
+
+    // Build context string from session history
+    const buildSessionContextString = () => {
+        const parts = [];
+
+        if (sessionContext.hintsReceived.length > 0) {
+            parts.push(`Previous hints seen by user: ${sessionContext.hintsReceived.join('; ')}`);
+        }
+
+        if (sessionContext.quizAttempts.length > 0) {
+            const quizSummary = sessionContext.quizAttempts.map((q, i) =>
+                `Quiz ${i + 1}: User answered "${q.userAnswer}" (${q.wasCorrect ? 'correct' : 'incorrect'})`
+            ).join('; ');
+            parts.push(`Quiz history: ${quizSummary}`);
+        }
+
+        if (sessionContext.userDiagnoses.length > 0) {
+            const diagnosisSummary = sessionContext.userDiagnoses.map((d, i) =>
+                `Attempt ${i + 1}: "${d.diagnosis}"`
+            ).join('; ');
+            parts.push(`User's previous diagnosis attempts: ${diagnosisSummary}`);
+        }
+
+        if (parts.length === 0) {
+            return null;
+        }
+
+        return `SESSION CONTEXT (user's learning journey): ${parts.join('. ')}`;
+    };
+
+    // Capture SVG and call AI analysis (uses cached image if available)
     const analyzeSignal = async (analysisMode, userNotes = null) => {
         setLoading(true);
         setError(null);
 
         try {
-            // Find the SVG element in the signal viewer
-            const svgElement = document.querySelector('.signal-viewer-svg');
-            if (!svgElement) {
-                throw new Error('Signal viewer not found. Please ensure a signal is loaded.');
+            let imageBlob = cachedImageBlob;
+
+            // If no cached image, capture now
+            if (!imageBlob) {
+                const svgElement = document.querySelector('.signal-viewer-svg');
+                if (!svgElement) {
+                    throw new Error('Signal viewer not found. Please ensure a signal is loaded.');
+                }
+                imageBlob = await captureSVGAsImage(svgElement);
+                setCachedImageBlob(imageBlob); // Cache for future use
+                console.log('Image captured and cached on first analysis');
+            } else {
+                console.log('Using cached image for analysis');
             }
 
-            // Capture SVG as image
-            const imageBlob = await captureSVGAsImage(svgElement);
+            // Build context from session history
+            const sessionContextStr = buildSessionContextString();
+
+            // Combine user notes with session context
+            let combinedNotes = userNotes || '';
+            if (sessionContextStr) {
+                combinedNotes = sessionContextStr + (combinedNotes ? `\n\nUser's current input: ${combinedNotes}` : '');
+            }
 
             // Prepare form data
             const formData = new FormData();
             formData.append('file', imageBlob, 'signal.png');
             formData.append('mode', analysisMode);
             formData.append('signal_type', 'Cardiac'); // Default, could be derived from signalData
-            if (userNotes) {
-                formData.append('user_notes', userNotes);
+            if (combinedNotes) {
+                formData.append('user_notes', combinedNotes);
             }
             if (signalData.comments) {
                 formData.append('metadata', JSON.stringify(signalData.comments));
@@ -54,6 +142,12 @@ const EducationalPanel = ({ signalData, onClose }) => {
             const response = await axios.post('/api/analyze', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
+
+            // Update interaction count
+            setSessionContext(prev => ({
+                ...prev,
+                interactionCount: prev.interactionCount + 1
+            }));
 
             return response.data;
         } catch (err) {
@@ -74,6 +168,13 @@ const EducationalPanel = ({ signalData, onClose }) => {
             } else {
                 setHintsResponse(result.response);
                 setRevealedHints(0); // Reset revealed hints
+
+                // Save hints to session context
+                const parsedHints = parseHints(result.response);
+                setSessionContext(prev => ({
+                    ...prev,
+                    hintsReceived: [...prev.hintsReceived, ...parsedHints]
+                }));
             }
         } catch (err) {
             console.error('Hints mode error:', err);
@@ -130,6 +231,20 @@ const EducationalPanel = ({ signalData, onClose }) => {
             return;
         }
         setQuizSubmitted(true);
+
+        // Save quiz attempt to session context
+        if (quizData && quizData[selectedAnswer]) {
+            const userChoice = quizData[selectedAnswer];
+            const correctOption = quizData.find(q => q.is_correct);
+            setSessionContext(prev => ({
+                ...prev,
+                quizAttempts: [...prev.quizAttempts, {
+                    userAnswer: userChoice.diagnosis,
+                    correctAnswer: correctOption?.diagnosis || 'Unknown',
+                    wasCorrect: userChoice.is_correct
+                }]
+            }));
+        }
     };
 
     // Advanced mode handler
@@ -145,6 +260,15 @@ const EducationalPanel = ({ signalData, onClose }) => {
                 setError(result.message || 'Failed to get feedback');
             } else {
                 setAdvancedFeedback(result.response);
+
+                // Save diagnosis attempt to session context
+                setSessionContext(prev => ({
+                    ...prev,
+                    userDiagnoses: [...prev.userDiagnoses, {
+                        diagnosis: userDiagnosis,
+                        feedback: result.response
+                    }]
+                }));
             }
         } catch (err) {
             console.error('Advanced mode error:', err);
@@ -202,9 +326,49 @@ const EducationalPanel = ({ signalData, onClose }) => {
                         gap: '12px'
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#111827' }}>
-                                Learn & Practice
-                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#111827' }}>
+                                    Learn & Practice
+                                </h3>
+                                {/* Image cache status indicator */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '11px',
+                                    color: cachedImageBlob ? '#10b981' : '#f59e0b',
+                                    backgroundColor: cachedImageBlob ? '#f0fdf4' : '#fefce8',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    border: `1px solid ${cachedImageBlob ? '#bbf7d0' : '#fef08a'}`
+                                }}>
+                                    {cachedImageBlob ? (
+                                        <>
+                                            <CheckCircle size={12} />
+                                            <span>Image Ready</span>
+                                        </>
+                                    ) : imageCapturing ? (
+                                        <>
+                                            <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                            <span>Capturing...</span>
+                                        </>
+                                    ) : (
+                                        <span>Waiting</span>
+                                    )}
+                                </div>
+                                {/* Session context indicator */}
+                                {sessionContext.interactionCount > 0 && (
+                                    <div style={{
+                                        fontSize: '11px',
+                                        color: '#6b7280',
+                                        backgroundColor: '#f3f4f6',
+                                        padding: '2px 8px',
+                                        borderRadius: '12px'
+                                    }}>
+                                        {sessionContext.interactionCount} interaction{sessionContext.interactionCount > 1 ? 's' : ''}
+                                    </div>
+                                )}
+                            </div>
                             <button
                                 onClick={onClose}
                                 style={{
@@ -397,12 +561,12 @@ const EducationalPanel = ({ signalData, onClose }) => {
                                                 }}>
                                                     Hint {idx + 1}
                                                 </div>
-                                                <div style={{
+                                                <div className="markdown-content" style={{
                                                     fontSize: '14px',
                                                     color: idx <= revealedHints ? '#111827' : '#9ca3af',
                                                     lineHeight: '1.6'
                                                 }}>
-                                                    {idx <= revealedHints ? hint : '??? Click below to reveal'}
+                                                    {idx <= revealedHints ? <ReactMarkdown>{hint}</ReactMarkdown> : '??? Click below to reveal'}
                                                 </div>
                                             </div>
                                         ))}
@@ -553,7 +717,7 @@ const EducationalPanel = ({ signalData, onClose }) => {
                                                             )}
                                                         </div>
                                                         {quizSubmitted && option.explanation && (
-                                                            <div style={{
+                                                            <div className="markdown-content" style={{
                                                                 fontSize: '13px',
                                                                 color: '#6b7280',
                                                                 lineHeight: '1.5',
@@ -561,7 +725,7 @@ const EducationalPanel = ({ signalData, onClose }) => {
                                                                 paddingTop: '8px',
                                                                 borderTop: '1px solid #e5e7eb'
                                                             }}>
-                                                                {option.explanation}
+                                                                <ReactMarkdown>{option.explanation}</ReactMarkdown>
                                                             </div>
                                                         )}
                                                     </div>
@@ -689,13 +853,12 @@ const EducationalPanel = ({ signalData, onClose }) => {
                                         }}>
                                             AI Expert Feedback
                                         </div>
-                                        <div style={{
+                                        <div className="markdown-content" style={{
                                             fontSize: '14px',
                                             color: '#111827',
-                                            lineHeight: '1.7',
-                                            whiteSpace: 'pre-wrap'
+                                            lineHeight: '1.7'
                                         }}>
-                                            {advancedFeedback}
+                                            <ReactMarkdown>{advancedFeedback}</ReactMarkdown>
                                         </div>
                                     </div>
                                 )}

@@ -2,46 +2,142 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SignalViewer from './SignalViewer';
 import EducationalPanel from './EducationalPanel';
-import { Download, RefreshCw, FileText, X, GraduationCap } from 'lucide-react';
+import { Download, RefreshCw, FileText, X, GraduationCap, Loader2 } from 'lucide-react';
+import { captureSVGAsImage } from '../utils/signalCapture';
 
 const Dashboard = ({ signalType }) => {
-    const [patients, setPatients] = useState([]);
-    const [selectedPatient, setSelectedPatient] = useState(null);
+    const [databases, setDatabases] = useState([]);  // List of databases in category
+    const [selectedDatabase, setSelectedDatabase] = useState('');
+    const [records, setRecords] = useState([]);  // Records in selected database
+    const [selectedRecord, setSelectedRecord] = useState('');
     const [signalData, setSignalData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [showClinicalNotes, setShowClinicalNotes] = useState(false);
     const [formattedNotes, setFormattedNotes] = useState(null);
     const [notesLoading, setNotesLoading] = useState(false);
     const [showEducational, setShowEducational] = useState(false);
+    const [cachedSignalImage, setCachedSignalImage] = useState(null); // Pre-captured image for Learn modal
 
-    useEffect(() => {
-        fetchPatients();
-    }, []);
+    // Map signalType to category key
+    const getCategoryKey = () => {
+        const mapping = {
+            'Cardiac': 'cardiac',
+            'Neuro': 'neurological',
+            'Hemodynamic': 'hemodynamic',
+            'Respiration': 'respiration',
+            'Motion': 'motion'
+        };
+        return mapping[signalType] || 'cardiac';
+    };
 
-    // Reset clinical notes panel when patient changes
-    useEffect(() => {
-        setShowClinicalNotes(false);
-        setFormattedNotes(null); // Clear formatted notes cache
-    }, [selectedPatient]);
-
-    const fetchPatients = async () => {
+    // Fetch databases and records for the current category
+    const fetchDatabasesAndRecords = async (retryCount = 0) => {
         try {
-            const res = await axios.get('/api/data');
-            setPatients(res.data.records);
+            const category = getCategoryKey();
+            const res = await axios.get(`/api/data/category/${category}`);
+            const allRecords = res.data.records || [];
+
+            // Parse records to extract unique database names
+            // Records are in format: "dbname/recordpath" or "dbname/subdir/recordpath"
+            const dbSet = new Set();
+            allRecords.forEach(record => {
+                const parts = record.split('/');
+                if (parts.length > 0) {
+                    dbSet.add(parts[0]);
+                }
+            });
+
+            setDatabases(Array.from(dbSet).sort());
+            setRecords(allRecords);
         } catch (err) {
-            console.error("Failed to fetch patients", err);
+            console.error("Failed to fetch data", err);
+            if (retryCount < 3) {
+                setTimeout(() => fetchDatabasesAndRecords(retryCount + 1), 1000 * (retryCount + 1));
+            }
         }
     };
 
-    const handleSelectPatient = async (pid) => {
-        setSelectedPatient(pid);
+    // Load databases on mount
+    useEffect(() => {
+        fetchDatabasesAndRecords();
+    }, []);
+
+    // Reset selections when signalType changes
+    useEffect(() => {
+        setSelectedDatabase('');
+        setSelectedRecord('');
+        setSignalData(null);
+        fetchDatabasesAndRecords();
+    }, [signalType]);
+
+    // Get records filtered by selected database
+    const getFilteredRecords = () => {
+        if (!selectedDatabase) return [];
+        return records
+            .filter(r => r.startsWith(selectedDatabase + '/'))
+            .map(r => {
+                // Get the part after the database name
+                const recordPath = r.substring(selectedDatabase.length + 1);
+                return { fullPath: r, displayName: recordPath };
+            });
+    };
+
+    // Close clinical notes modal when record changes (notes pre-fetch is handled in handleSelectRecord)
+    useEffect(() => {
+        setShowClinicalNotes(false);
+    }, [selectedRecord]);
+
+    // Pre-capture signal image when signalData changes (for Learn modal)
+    useEffect(() => {
+        if (!signalData) {
+            setCachedSignalImage(null);
+            return;
+        }
+
+        // Delay capture to ensure SVG is rendered
+        const timer = setTimeout(async () => {
+            try {
+                const svgElement = document.querySelector('.signal-viewer-svg');
+                if (svgElement) {
+                    const blob = await captureSVGAsImage(svgElement);
+                    setCachedSignalImage(blob);
+                    console.log('Signal image pre-captured for Learn modal:', blob.size, 'bytes');
+                }
+            } catch (err) {
+                console.error('Failed to pre-capture signal image:', err);
+            }
+        }, 500); // Wait for SVG to fully render
+
+        return () => clearTimeout(timer);
+    }, [signalData]);
+
+    // Handle database selection
+    const handleSelectDatabase = (db) => {
+        setSelectedDatabase(db);
+        setSelectedRecord('');
+        setSignalData(null);
+    };
+
+    // Handle record selection and load data
+    const handleSelectRecord = async (recordPath) => {
+        if (!recordPath) return;
+        setSelectedRecord(recordPath);
         setLoading(true);
+        setFormattedNotes(null); // Clear previous notes
         try {
-            // Need to handle path encoding if slashes exist
-            const res = await axios.get(`/api/data/${encodeURIComponent(pid)}`);
+            const category = getCategoryKey();
+            const res = await axios.get(`/api/data/${category}/${encodeURIComponent(recordPath)}`);
             setSignalData(res.data);
+
+            // Pre-fetch notes in background if comments exist
+            if (res.data.comments && res.data.comments.length > 0) {
+                // Use setTimeout to give it low priority (after main render)
+                setTimeout(() => {
+                    formatNotesWithAI(res.data.comments);
+                }, 100);
+            }
         } catch (err) {
-            console.error(err);
+            console.error("Failed to load record:", err);
         } finally {
             setLoading(false);
         }
@@ -53,7 +149,7 @@ const Dashboard = ({ signalType }) => {
         setLoading(true);
         try {
             await axios.post('/api/data/download', { db_slug: slug, num_records: 2 });
-            await fetchPatients();
+            await fetchDatabasesAndRecords();
         } catch (err) {
             alert("Download failed");
         } finally {
@@ -78,10 +174,11 @@ const Dashboard = ({ signalType }) => {
         }
     };
 
-    // Open clinical notes modal and format with AI
+    // Open clinical notes modal (notes are pre-fetched when record is selected)
     const handleOpenClinicalNotes = () => {
         setShowClinicalNotes(true);
-        if (signalData && signalData.comments && !formattedNotes) {
+        // Only fetch if not already fetched or currently fetching
+        if (signalData && signalData.comments && !formattedNotes && !notesLoading) {
             formatNotesWithAI(signalData.comments);
         }
     };
@@ -92,13 +189,29 @@ const Dashboard = ({ signalType }) => {
             <div className="glass-panel" style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
                 <h2>{signalType} Workspace</h2>
 
+                {/* Database Selector */}
                 <select
                     className="patient-select"
-                    value={selectedPatient || ''}
-                    onChange={(e) => handleSelectPatient(e.target.value)}
+                    value={selectedDatabase}
+                    onChange={(e) => handleSelectDatabase(e.target.value)}
+                    style={{ minWidth: '150px' }}
                 >
-                    <option value="">Select a Record...</option>
-                    {patients.map(p => <option key={p} value={p}>{p}</option>)}
+                    <option value="">Select Database...</option>
+                    {databases.map(db => <option key={db} value={db}>{db}</option>)}
+                </select>
+
+                {/* Record Selector - only show when database is selected */}
+                <select
+                    className="patient-select"
+                    value={selectedRecord}
+                    onChange={(e) => handleSelectRecord(e.target.value)}
+                    disabled={!selectedDatabase}
+                    style={{ minWidth: '200px' }}
+                >
+                    <option value="">Select Record...</option>
+                    {getFilteredRecords().map(r => (
+                        <option key={r.fullPath} value={r.fullPath}>{r.displayName}</option>
+                    ))}
                 </select>
 
                 {/* Clinical Notes Badge - Only show if notes exist */}
@@ -148,7 +261,7 @@ const Dashboard = ({ signalType }) => {
                     </button>
                 )}
 
-                <button className="action-btn" onClick={fetchPatients}>
+                <button className="action-btn" onClick={fetchDatabasesAndRecords}>
                     <RefreshCw size={18} />
                 </button>
 
@@ -208,7 +321,7 @@ const Dashboard = ({ signalType }) => {
                                         Clinical Notes
                                     </h3>
                                     <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6b7280' }}>
-                                        {selectedPatient} • {signalData.comments.length} {signalData.comments.length === 1 ? 'note' : 'notes'}
+                                        {selectedRecord} • {signalData.comments.length} {signalData.comments.length === 1 ? 'note' : 'notes'}
                                     </p>
                                 </div>
                                 <button
@@ -317,12 +430,49 @@ const Dashboard = ({ signalType }) => {
                 <EducationalPanel
                     signalData={signalData}
                     onClose={() => setShowEducational(false)}
+                    preloadedImage={cachedSignalImage}
                 />
             )}
 
             {/* Main Signal View */}
             <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden' }}>
-                {loading && <div className="loading-overlay">Loading Data...</div>}
+                {loading && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10,
+                        gap: '16px'
+                    }}>
+                        <Loader2
+                            size={48}
+                            style={{
+                                color: '#3b82f6',
+                                animation: 'spin 1s linear infinite'
+                            }}
+                        />
+                        <div style={{
+                            fontSize: '16px',
+                            fontWeight: 500,
+                            color: '#374151'
+                        }}>
+                            Loading Signal Data...
+                        </div>
+                        <div style={{
+                            fontSize: '13px',
+                            color: '#6b7280'
+                        }}>
+                            Please wait while we fetch the record
+                        </div>
+                    </div>
+                )}
 
                 {!signalData && !loading && (
                     <div className="empty-state">

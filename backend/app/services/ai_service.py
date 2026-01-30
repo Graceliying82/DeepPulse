@@ -63,9 +63,37 @@ def analyze_signal(image_bytes, user_notes=None, patient_metadata=None, mode="fu
         instruction_segment = """
         Provide exactly 3 potential conclusions: 1 Correct, 2 Distractors.
         Return raw JSON array: [{"diagnosis": "...", "is_correct": bool, "explanation": "..."}]
+
+        IMPORTANT for explanations:
+        - For the CORRECT answer: Start with "CORRECT!" then explain why this is the right diagnosis.
+        - For INCORRECT answers: Start with "INCORRECT." then briefly explain why this is wrong and what to look for instead.
         """
     else:
-        instruction_segment = f"Perform full clinical analysis of this {signal_type} signal. Include rhythm, morphology, and conclusion."
+        # Advanced/Full mode - conclusion first, then details
+        if user_notes:
+            instruction_segment = f"""
+            The user provided their diagnosis: "{user_notes}"
+
+            RESPOND IN THIS EXACT ORDER:
+            1. VERDICT: Start with "CORRECT!" or "INCORRECT." on its own line.
+            2. If incorrect, immediately state: "The correct diagnosis is: [diagnosis]"
+            3. Then provide a brief explanation of why (2-3 sentences).
+            4. Finally, provide detailed clinical analysis including rhythm, morphology, and supporting evidence.
+
+            Be encouraging but accurate. This is for educational purposes.
+            """
+        else:
+            instruction_segment = f"""
+            Perform full clinical analysis of this {signal_type} signal.
+
+            RESPOND IN THIS ORDER:
+            1. DIAGNOSIS: State the primary diagnosis clearly on the first line.
+            2. CONFIDENCE: High/Medium/Low
+            3. KEY FINDINGS: List 2-3 most important observations.
+            4. DETAILED ANALYSIS: Include rhythm, morphology, intervals, and clinical significance.
+
+            Educational purposes only.
+            """
     
     prompt = f"""
     You are an {expert_persona}.
@@ -212,7 +240,7 @@ Return ONLY valid JSON array. Example:
 JSON output:"""
 
     try:
-        response = call_genai_with_retry(client, 'gemini-2.0-flash-exp', [prompt])
+        response = call_genai_with_retry(client, 'gemini-3-flash-preview', [prompt])
         text = response.text.strip()
 
         logger.info(f"AI raw response: {text}")
