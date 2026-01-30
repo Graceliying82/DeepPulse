@@ -14,6 +14,20 @@ const Dashboard = ({ signalType }) => {
     const [notesLoading, setNotesLoading] = useState(false);
     const [showEducational, setShowEducational] = useState(false);
 
+    const fetchPatients = async (retryCount = 0) => {
+        try {
+            const res = await axios.get('/api/data');
+            setPatients(res.data.records || []);
+        } catch (err) {
+            console.error("Failed to fetch patients", err);
+            // Retry up to 3 times with increasing delay (backend might still be starting)
+            if (retryCount < 3) {
+                setTimeout(() => fetchPatients(retryCount + 1), 1000 * (retryCount + 1));
+            }
+        }
+    };
+
+    // Load patient list on mount
     useEffect(() => {
         fetchPatients();
     }, []);
@@ -23,15 +37,6 @@ const Dashboard = ({ signalType }) => {
         setShowClinicalNotes(false);
         setFormattedNotes(null); // Clear formatted notes cache
     }, [selectedPatient]);
-
-    const fetchPatients = async () => {
-        try {
-            const res = await axios.get('/api/data');
-            setPatients(res.data.records);
-        } catch (err) {
-            console.error("Failed to fetch patients", err);
-        }
-    };
 
     const handleSelectPatient = async (pid) => {
         setSelectedPatient(pid);
