@@ -79,11 +79,20 @@ def download_data(req: DownloadRequest):
     """Download data from PhysioNet."""
     try:
         records = data_service.download_data(
-            req.db_slug, 
-            req.num_records, 
+            req.db_slug,
+            req.num_records,
             category=req.category
         )
         return {"status": "success", "downloaded": len(records), "records": records}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/data/category/{category}")
+def list_data_by_category(category: str):
+    """List patient records in a specific category."""
+    try:
+        records = data_service.list_patients(category=category)
+        return {"category": category, "count": len(records), "records": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -156,15 +165,6 @@ def list_categories():
             matching = [c for c in categories if c["key"] == cat["key"]]
             cat["record_count"] = matching[0]["record_count"] if matching else 0
         return {"categories": all_categories}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/data/category/{category}")
-def list_data_by_category(category: str):
-    """List patient records in a specific category."""
-    try:
-        records = data_service.list_patients(category=category)
-        return {"category": category, "count": len(records), "records": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
