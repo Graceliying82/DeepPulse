@@ -212,7 +212,7 @@ Return ONLY valid JSON array. Example:
 JSON output:"""
 
     try:
-        response = call_genai_with_retry(client, 'gemini-2.0-flash-exp', [prompt])
+        response = call_genai_with_retry(client, 'gemini-3-flash-preview', [prompt])
         text = response.text.strip()
 
         logger.info(f"AI raw response: {text}")

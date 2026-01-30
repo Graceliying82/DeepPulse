@@ -80,10 +80,9 @@ const Dashboard = ({ signalType }) => {
             });
     };
 
-    // Reset clinical notes panel when record changes
+    // Close clinical notes modal when record changes (notes pre-fetch is handled in handleSelectRecord)
     useEffect(() => {
         setShowClinicalNotes(false);
-        setFormattedNotes(null);
     }, [selectedRecord]);
 
     // Handle database selection
@@ -98,10 +97,19 @@ const Dashboard = ({ signalType }) => {
         if (!recordPath) return;
         setSelectedRecord(recordPath);
         setLoading(true);
+        setFormattedNotes(null); // Clear previous notes
         try {
             const category = getCategoryKey();
             const res = await axios.get(`/api/data/${category}/${encodeURIComponent(recordPath)}`);
             setSignalData(res.data);
+
+            // Pre-fetch notes in background if comments exist
+            if (res.data.comments && res.data.comments.length > 0) {
+                // Use setTimeout to give it low priority (after main render)
+                setTimeout(() => {
+                    formatNotesWithAI(res.data.comments);
+                }, 100);
+            }
         } catch (err) {
             console.error("Failed to load record:", err);
         } finally {
@@ -140,10 +148,11 @@ const Dashboard = ({ signalType }) => {
         }
     };
 
-    // Open clinical notes modal and format with AI
+    // Open clinical notes modal (notes are pre-fetched when record is selected)
     const handleOpenClinicalNotes = () => {
         setShowClinicalNotes(true);
-        if (signalData && signalData.comments && !formattedNotes) {
+        // Only fetch if not already fetched or currently fetching
+        if (signalData && signalData.comments && !formattedNotes && !notesLoading) {
             formatNotesWithAI(signalData.comments);
         }
     };
