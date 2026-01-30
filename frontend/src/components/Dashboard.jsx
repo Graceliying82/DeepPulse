@@ -3,6 +3,7 @@ import axios from 'axios';
 import SignalViewer from './SignalViewer';
 import EducationalPanel from './EducationalPanel';
 import { Download, RefreshCw, FileText, X, GraduationCap } from 'lucide-react';
+import { captureSVGAsImage } from '../utils/signalCapture';
 
 const Dashboard = ({ signalType }) => {
     const [databases, setDatabases] = useState([]);  // List of databases in category
@@ -15,6 +16,7 @@ const Dashboard = ({ signalType }) => {
     const [formattedNotes, setFormattedNotes] = useState(null);
     const [notesLoading, setNotesLoading] = useState(false);
     const [showEducational, setShowEducational] = useState(false);
+    const [cachedSignalImage, setCachedSignalImage] = useState(null); // Pre-captured image for Learn modal
 
     // Map signalType to category key
     const getCategoryKey = () => {
@@ -84,6 +86,30 @@ const Dashboard = ({ signalType }) => {
     useEffect(() => {
         setShowClinicalNotes(false);
     }, [selectedRecord]);
+
+    // Pre-capture signal image when signalData changes (for Learn modal)
+    useEffect(() => {
+        if (!signalData) {
+            setCachedSignalImage(null);
+            return;
+        }
+
+        // Delay capture to ensure SVG is rendered
+        const timer = setTimeout(async () => {
+            try {
+                const svgElement = document.querySelector('.signal-viewer-svg');
+                if (svgElement) {
+                    const blob = await captureSVGAsImage(svgElement);
+                    setCachedSignalImage(blob);
+                    console.log('Signal image pre-captured for Learn modal:', blob.size, 'bytes');
+                }
+            } catch (err) {
+                console.error('Failed to pre-capture signal image:', err);
+            }
+        }, 500); // Wait for SVG to fully render
+
+        return () => clearTimeout(timer);
+    }, [signalData]);
 
     // Handle database selection
     const handleSelectDatabase = (db) => {
@@ -404,6 +430,7 @@ const Dashboard = ({ signalType }) => {
                 <EducationalPanel
                     signalData={signalData}
                     onClose={() => setShowEducational(false)}
+                    preloadedImage={cachedSignalImage}
                 />
             )}
 
