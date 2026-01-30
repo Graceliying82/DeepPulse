@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SignalViewer from './SignalViewer';
 import EducationalPanel from './EducationalPanel';
-import { Download, RefreshCw, FileText, X, GraduationCap } from 'lucide-react';
+import { Download, RefreshCw, FileText, X, GraduationCap, Loader2 } from 'lucide-react';
 import { captureSVGAsImage } from '../utils/signalCapture';
 
 const Dashboard = ({ signalType }) => {
@@ -436,7 +436,43 @@ const Dashboard = ({ signalType }) => {
 
             {/* Main Signal View */}
             <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden' }}>
-                {loading && <div className="loading-overlay">Loading Data...</div>}
+                {loading && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10,
+                        gap: '16px'
+                    }}>
+                        <Loader2
+                            size={48}
+                            style={{
+                                color: '#3b82f6',
+                                animation: 'spin 1s linear infinite'
+                            }}
+                        />
+                        <div style={{
+                            fontSize: '16px',
+                            fontWeight: 500,
+                            color: '#374151'
+                        }}>
+                            Loading Signal Data...
+                        </div>
+                        <div style={{
+                            fontSize: '13px',
+                            color: '#6b7280'
+                        }}>
+                            Please wait while we fetch the record
+                        </div>
+                    </div>
+                )}
 
                 {!signalData && !loading && (
                     <div className="empty-state">
