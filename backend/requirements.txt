@@ -12,3 +12,4 @@ pytest-asyncio
 httpx
 python-dotenv
 pyedflib
+scipy
