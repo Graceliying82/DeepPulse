@@ -14,6 +14,7 @@ import { processSignalData } from '../signals';
  */
 const SignalViewer = ({ data, type }) => {
     const [timeWindow, setTimeWindow] = useState(10); // seconds to display
+    const [zoom, setZoom] = useState(30); // mm/sec, default standard for EEG
 
     // Process signal data through the modular architecture
     const { parsed, displayConfig, signalType } = useMemo(() => {
@@ -46,6 +47,8 @@ const SignalViewer = ({ data, type }) => {
                 signalType={signalType}
                 timeWindow={timeWindow}
                 onTimeWindowChange={setTimeWindow}
+                zoom={zoom}
+                onZoomChange={setZoom}
             />
 
             {/* Signal Display Area */}
@@ -59,6 +62,7 @@ const SignalViewer = ({ data, type }) => {
                         parsed={parsed}
                         displayConfig={displayConfig}
                         timeWindow={timeWindow}
+                        zoom={zoom}
                     />
                 ) : (
                     <OverlayStripView
@@ -74,7 +78,7 @@ const SignalViewer = ({ data, type }) => {
 /**
  * Header component showing signal metadata and controls
  */
-const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange }) => {
+const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom, onZoomChange }) => {
     const metadata = parsed?.metadata || {};
     const isEEG = signalType === 'eeg';
 
@@ -113,25 +117,49 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange }) =>
                 </div>
             </div>
 
-            {/* Time window control */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: 12, color: '#6b7280' }}>Window:</span>
-                <select
-                    value={timeWindow}
-                    onChange={(e) => onTimeWindowChange(Number(e.target.value))}
-                    style={{
-                        padding: '4px 8px',
-                        fontSize: 12,
-                        borderRadius: 4,
-                        border: '1px solid #d1d5db',
-                        backgroundColor: '#fff'
-                    }}
-                >
-                    <option value={5}>5s</option>
-                    <option value={10}>10s</option>
-                    <option value={20}>20s</option>
-                    <option value={30}>30s</option>
-                </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                {/* Zoom control for EEG */}
+                {isEEG && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: 12, color: '#6b7280' }}>Zoom:</span>
+                        <select
+                            value={zoom}
+                            onChange={(e) => onZoomChange(Number(e.target.value))}
+                            style={{
+                                padding: '4px 8px',
+                                fontSize: 12,
+                                borderRadius: 4,
+                                border: '1px solid #d1d5db',
+                                backgroundColor: '#fff'
+                            }}
+                        >
+                            <option value={15}>15 mm/s</option>
+                            <option value={30}>30 mm/s</option>
+                            <option value={60}>60 mm/s</option>
+                        </select>
+                    </div>
+                )}
+
+                {/* Time window control */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: 12, color: '#6b7280' }}>Window:</span>
+                    <select
+                        value={timeWindow}
+                        onChange={(e) => onTimeWindowChange(Number(e.target.value))}
+                        style={{
+                            padding: '4px 8px',
+                            fontSize: 12,
+                            borderRadius: 4,
+                            border: '1px solid #d1d5db',
+                            backgroundColor: '#fff'
+                        }}
+                    >
+                        <option value={5}>5s</option>
+                        <option value={10}>10s</option>
+                        <option value={20}>20s</option>
+                        <option value={30}>30s</option>
+                    </select>
+                </div>
             </div>
         </div>
     );
@@ -141,7 +169,7 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange }) =>
  * Stacked Montage View - For EEG and multi-channel signals
  * Each channel displayed in its own horizontal lane
  */
-const StackedMontageView = ({ parsed, displayConfig, timeWindow }) => {
+const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
     const channels = parsed.channels || [];
     const fs = parsed.metadata?.samplingRate || 256;
 
@@ -153,14 +181,17 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow }) => {
     const marginTop = 10;
     const marginBottom = 40;
 
-    // Calculate dimensions
-    const containerWidth = 1200; // Will be constrained by parent
-    const plotWidth = containerWidth - labelWidth - marginRight;
-    const totalHeight = channels.length * (channelHeight + channelSpacing) + marginTop + marginBottom;
+    // Pixel calculation based on zoom (mm/s)
+    // 96 DPI -> 1 inch = 25.4mm = 96px => 1mm = 3.78px
+    const PX_PER_MM = 3.78;
+    const pixelsPerSecond = zoom * PX_PER_MM;
 
     // Time scale
     const effectiveTimeWindow = Math.min(timeWindow, parsed.metadata?.duration || timeWindow);
-    const pixelsPerSecond = plotWidth / effectiveTimeWindow;
+
+    const plotWidth = effectiveTimeWindow * pixelsPerSecond;
+    const containerWidth = Math.max(1200, plotWidth + labelWidth + marginRight); // Ensure at least 1200px
+    const totalHeight = channels.length * (channelHeight + channelSpacing) + marginTop + marginBottom;
 
     // Generate grid lines
     const gridLines = [];
@@ -206,7 +237,7 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow }) => {
             className="signal-viewer-svg"
             width={containerWidth}
             height={totalHeight}
-            style={{ display: 'block', minWidth: '100%' }}
+            style={{ display: 'block' }} // Remove minWidth constraint to allow true sizing
         >
             {/* Background */}
             <rect width={containerWidth} height={totalHeight} fill="#ffffff" />
@@ -238,7 +269,7 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow }) => {
 
             {/* Scale bar */}
             <ScaleBar
-                x={containerWidth - 100}
+                x={labelWidth + plotWidth - 100} // Position relative to plot end, but inside
                 y={totalHeight - 35}
                 timeWidth={pixelsPerSecond}
                 amplitudeHeight={20}
