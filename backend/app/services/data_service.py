@@ -178,11 +178,12 @@ def download_data(db_slug, num_records=5, random_shuffle=True, category=None, da
 
     return downloaded
 
-def load_record(record_name, data_dir=None, category=None):
+def load_record(record_name, data_dir=None, category=None, max_duration=60):
     """
     Loads signal and metadata.
     If category is provided, looks in category directory.
     Supports both wfdb format (.hea/.dat) and EDF format (.edf).
+    max_duration: Limit loading to this many seconds (default 60s).
     """
     if category:
         target_dir = get_category_dir(category, data_dir or DEFAULT_DATA_DIR)
@@ -197,23 +198,35 @@ def load_record(record_name, data_dir=None, category=None):
 
     if os.path.exists(edf_path):
         # Load EDF format using pyedflib
-        return _load_edf_record(edf_path)
+        return _load_edf_record(edf_path, max_duration=max_duration)
     elif os.path.exists(hea_path):
         # Load standard wfdb format
-        return _load_wfdb_record(record_path)
+        return _load_wfdb_record(record_path, max_duration=max_duration)
     else:
         raise FileNotFoundError(f"Record not found: {record_name}")
 
 
-def _load_wfdb_record(record_path):
-    """Load a standard wfdb format record."""
+def _load_wfdb_record(record_path, max_duration=60):
+    """Load a standard wfdb format record with duration limit."""
     try:
-        signals, fields = wfdb.rdsamp(record_path)
+        # First read header to get sampling frequency
+        header = wfdb.rdheader(record_path)
+        fs = header.fs
+        
+        # Calculate samples to read
+        sampto = int(fs * max_duration)
+        
+        # Read signals with limit
+        signals, fields = wfdb.rdsamp(record_path, sampto=sampto)
+
+        # Add note about truncation
+        comments = fields.get('comments', [])
+        comments.append(f"Standard View: First {max_duration}s of data shown")
 
         return {
             "signals": signals,
             "fs": fields['fs'],
-            "comments": fields.get('comments', []),
+            "comments": comments,
             "sig_name": fields.get('sig_name', []),
             "units": fields.get('units', [])
         }

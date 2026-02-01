@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { processSignalData } from '../signals';
 
 /**
@@ -51,11 +51,11 @@ const SignalViewer = ({ data, type }) => {
                 onZoomChange={setZoom}
             />
 
-            {/* Signal Display Area */}
+            {/* Signal Display Area - Split Pane for Fixed Labels */}
             <div style={{
                 flex: 1,
-                overflow: 'auto',
-                padding: 10,
+                overflow: 'hidden', // Manage scrolling internally in views
+                position: 'relative'
             }}>
                 {layout === 'stacked' ? (
                     <StackedMontageView
@@ -167,7 +167,7 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom
 
 /**
  * Stacked Montage View - For EEG and multi-channel signals
- * Each channel displayed in its own horizontal lane
+ * Implements fixed label column on left and scrolling content on right
  */
 const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
     const channels = parsed.channels || [];
@@ -181,8 +181,18 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
     const marginTop = 10;
     const marginBottom = 40;
 
+    // Refs for scroll sync
+    const colLabelsRef = useRef(null);
+    const colSignalRef = useRef(null);
+
+    // Sync vertical scroll from signal to labels
+    const handleScroll = (e) => {
+        if (colLabelsRef.current) {
+            colLabelsRef.current.scrollTop = e.target.scrollTop;
+        }
+    };
+
     // Pixel calculation based on zoom (mm/s)
-    // 96 DPI -> 1 inch = 25.4mm = 96px => 1mm = 3.78px
     const PX_PER_MM = 3.78;
     const pixelsPerSecond = zoom * PX_PER_MM;
 
@@ -190,15 +200,21 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
     const effectiveTimeWindow = Math.min(timeWindow, parsed.metadata?.duration || timeWindow);
 
     const plotWidth = effectiveTimeWindow * pixelsPerSecond;
-    const containerWidth = Math.max(1200, plotWidth + labelWidth + marginRight); // Ensure at least 1200px
+    // We adjust container width to be just plot+margin because labels are separate now
+    // But we keep plot dimensions logical for the Right pane
     const totalHeight = channels.length * (channelHeight + channelSpacing) + marginTop + marginBottom;
+    const rightPaneWidth = Math.max(800, plotWidth + marginRight);
 
-    // Generate grid lines
+    // Generate grid lines (Right Pane Only)
     const gridLines = [];
     const majorInterval = 1; // 1 second major lines
     const minorInterval = 0.2; // 200ms minor lines
 
     for (let t = 0; t <= effectiveTimeWindow; t += minorInterval) {
+        // x is relative to plot start (0 in right pane context + offset if needed)
+        // In original logic: x = labelWidth + t*pps
+        // We will transform the Right Pane content by translateX(-labelWidth)
+        // So we keep original coordinate calculations to avoid complexity
         const x = labelWidth + t * pixelsPerSecond;
         const isMajor = Math.abs(t % majorInterval) < 0.01;
         gridLines.push(
@@ -214,7 +230,7 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
         );
     }
 
-    // Time axis labels
+    // Time axis labels (Right Pane Only)
     const timeLabels = [];
     for (let t = 0; t <= effectiveTimeWindow; t += 1) {
         const x = labelWidth + t * pixelsPerSecond;
@@ -233,50 +249,103 @@ const StackedMontageView = ({ parsed, displayConfig, timeWindow, zoom }) => {
     }
 
     return (
-        <svg
-            className="signal-viewer-svg"
-            width={containerWidth}
-            height={totalHeight}
-            style={{ display: 'block' }} // Remove minWidth constraint to allow true sizing
-        >
-            {/* Background */}
-            <rect width={containerWidth} height={totalHeight} fill="#ffffff" />
+        <div className="signal-viewer-container" style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+            {/* Left Pane: Fixed Labels */}
+            <div
+                ref={colLabelsRef}
+                style={{
+                    width: labelWidth,
+                    flexShrink: 0,
+                    overflow: 'hidden', // Hide scrollbars, scrolled via JS
+                    borderRight: '1px solid #e5e7eb',
+                    backgroundColor: '#fff',
+                    zIndex: 10
+                }}
+            >
+                <svg width={labelWidth} height={totalHeight}>
+                    {channels.map((channel, idx) => {
+                        const yOffset = marginTop + idx * (channelHeight + channelSpacing);
+                        return (
+                            <StackedChannelTrace
+                                key={`label-${idx}`}
+                                channel={channel}
+                                yOffset={yOffset}
+                                channelHeight={channelHeight}
+                                labelWidth={labelWidth}
+                                plotWidth={0} // No plot needed here
+                                pixelsPerSecond={0}
+                                fs={fs}
+                                timeWindow={0}
+                                isEEG={parsed.type === 'eeg'}
+                                showLabel={true}
+                                showSignal={false}
+                            />
+                        );
+                    })}
+                </svg>
+            </div>
 
-            {/* Grid lines */}
-            {gridLines}
+            {/* Right Pane: Scrolling Signals */}
+            <div
+                ref={colSignalRef}
+                style={{
+                    flex: 1,
+                    overflow: 'auto', // Scroll both axes
+                    height: '100%'
+                }}
+                onScroll={handleScroll}
+            >
+                <svg
+                    className="signal-viewer-svg"
+                    width={rightPaneWidth}
+                    height={totalHeight}
+                    style={{ display: 'block' }}
+                >
+                    {/* Background */}
+                    <rect width={rightPaneWidth} height={totalHeight} fill="#ffffff" />
 
-            {/* Time labels */}
-            {timeLabels}
+                    {/* Shift everything left by labelWidth so t=0 aligns with left edge */}
+                    <g transform={`translate(-${labelWidth}, 0)`}>
+                        {/* Grid lines */}
+                        {gridLines}
 
-            {/* Channel traces */}
-            {channels.map((channel, idx) => {
-                const yOffset = marginTop + idx * (channelHeight + channelSpacing);
-                return (
-                    <StackedChannelTrace
-                        key={idx}
-                        channel={channel}
-                        yOffset={yOffset}
-                        channelHeight={channelHeight}
-                        labelWidth={labelWidth}
-                        plotWidth={plotWidth}
-                        pixelsPerSecond={pixelsPerSecond}
-                        fs={fs}
-                        timeWindow={effectiveTimeWindow}
-                        isEEG={parsed.type === 'eeg'}
-                    />
-                );
-            })}
+                        {/* Time labels */}
+                        {timeLabels}
 
-            {/* Scale bar */}
-            <ScaleBar
-                x={labelWidth + plotWidth - 100} // Position relative to plot end, but inside
-                y={totalHeight - 35}
-                timeWidth={pixelsPerSecond}
-                amplitudeHeight={20}
-                timeLabel="1s"
-                amplitudeLabel={parsed.type === 'eeg' ? '50μV' : '1mV'}
-            />
-        </svg>
+                        {/* Channel traces */}
+                        {channels.map((channel, idx) => {
+                            const yOffset = marginTop + idx * (channelHeight + channelSpacing);
+                            return (
+                                <StackedChannelTrace
+                                    key={`trace-${idx}`}
+                                    channel={channel}
+                                    yOffset={yOffset}
+                                    channelHeight={channelHeight}
+                                    labelWidth={labelWidth}
+                                    plotWidth={plotWidth}
+                                    pixelsPerSecond={pixelsPerSecond}
+                                    fs={fs}
+                                    timeWindow={effectiveTimeWindow}
+                                    isEEG={parsed.type === 'eeg'}
+                                    showLabel={false}
+                                    showSignal={true}
+                                />
+                            );
+                        })}
+
+                        {/* Scale bar */}
+                        <ScaleBar
+                            x={labelWidth + plotWidth - 100}
+                            y={totalHeight - 35}
+                            timeWidth={pixelsPerSecond}
+                            amplitudeHeight={20}
+                            timeLabel="1s"
+                            amplitudeLabel={parsed.type === 'eeg' ? '50μV' : '1mV'}
+                        />
+                    </g>
+                </svg>
+            </div>
+        </div>
     );
 };
 
@@ -292,48 +361,12 @@ const StackedChannelTrace = ({
     pixelsPerSecond,
     fs,
     timeWindow,
-    isEEG
+    isEEG,
+    showLabel = true,
+    showSignal = true
 }) => {
     const signal = channel.displaySignal || channel.rawSignal || [];
     const centerY = yOffset + channelHeight / 2;
-
-    // Get signal for display (limited to time window)
-    const samplesToShow = Math.min(signal.length, Math.floor(fs * timeWindow));
-    const displaySignal = signal.slice(0, samplesToShow);
-
-    // Calculate amplitude scale (normalize to channel height)
-    const padding = 5;
-    const effectiveHeight = channelHeight - 2 * padding;
-
-    // For normalized signals, use fixed range; otherwise auto-scale
-    let min, max;
-    if (displaySignal.length > 0) {
-        min = Math.min(...displaySignal);
-        max = Math.max(...displaySignal);
-    } else {
-        min = -1;
-        max = 1;
-    }
-    const range = max - min || 1;
-    const scale = effectiveHeight / range;
-
-    // Downsample for performance
-    const maxPoints = 2000;
-    const step = Math.max(1, Math.floor(displaySignal.length / maxPoints));
-
-    // Generate path
-    let pathData = '';
-    for (let i = 0; i < displaySignal.length; i += step) {
-        const t = i / fs;
-        const x = labelWidth + t * pixelsPerSecond;
-        const y = centerY - (displaySignal[i] - (min + max) / 2) * scale;
-
-        if (i === 0) {
-            pathData = `M ${x} ${y}`;
-        } else {
-            pathData += ` L ${x} ${y}`;
-        }
-    }
 
     // Determine channel color
     const channelColor = channel.color || (isEEG ? '#1e40af' : '#dc2626');
@@ -350,70 +383,116 @@ const StackedChannelTrace = ({
 
     return (
         <g>
-            {/* Channel background */}
-            {bgColor !== 'transparent' && (
-                <rect
-                    x={labelWidth}
-                    y={yOffset}
-                    width={plotWidth}
-                    height={channelHeight}
-                    fill={bgColor}
-                    opacity={0.3}
-                />
+            {/* Context: Label Pane */}
+            {showLabel && (
+                <text
+                    x={labelWidth - 8}
+                    y={centerY}
+                    fontSize="11"
+                    fontWeight={channel.isFirstInChain ? 600 : 400}
+                    fill="#374151"
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                >
+                    {channel.name}
+                </text>
             )}
 
-            {/* Channel label */}
-            <text
-                x={labelWidth - 8}
-                y={centerY}
-                fontSize="11"
-                fontWeight={channel.isFirstInChain ? 600 : 400}
-                fill="#374151"
-                textAnchor="end"
-                dominantBaseline="middle"
-            >
-                {channel.name}
-            </text>
+            {/* Context: Signal Pane */}
+            {showSignal && (
+                <>
+                    {/* Channel background */}
+                    {bgColor !== 'transparent' && (
+                        <rect
+                            x={labelWidth}
+                            y={yOffset}
+                            width={plotWidth}
+                            height={channelHeight}
+                            fill={bgColor}
+                            opacity={0.3}
+                        />
+                    )}
 
-            {/* Baseline */}
-            <line
-                x1={labelWidth}
-                y1={centerY}
-                x2={labelWidth + plotWidth}
-                y2={centerY}
-                stroke="#e5e7eb"
-                strokeWidth={0.5}
-                strokeDasharray="2 2"
-            />
+                    {/* Baseline */}
+                    <line
+                        x1={labelWidth}
+                        y1={centerY}
+                        x2={labelWidth + plotWidth}
+                        y2={centerY}
+                        stroke="#e5e7eb"
+                        strokeWidth={0.5}
+                        strokeDasharray="2 2"
+                    />
 
-            {/* Signal trace */}
-            {pathData && (
-                <path
-                    d={pathData}
-                    fill="none"
-                    stroke={channelColor}
-                    strokeWidth={1}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
+                    {/* Signal trace */}
+                    {(() => {
+                        // Logic calculation only if needed
+                        // Get signal for display (limited to time window)
+                        const samplesToShow = Math.min(signal.length, Math.floor(fs * timeWindow));
+                        const displaySignal = signal.slice(0, samplesToShow);
+
+                        // Calculate amplitude scale (normalize to channel height)
+                        const padding = 5;
+                        const effectiveHeight = channelHeight - 2 * padding;
+
+                        let min, max;
+                        if (displaySignal.length > 0) {
+                            min = Math.min(...displaySignal);
+                            max = Math.max(...displaySignal);
+                        } else {
+                            min = -1;
+                            max = 1;
+                        }
+                        const range = max - min || 1;
+                        const scale = effectiveHeight / range;
+
+                        // Downsample for performance
+                        const maxPoints = 2000;
+                        const step = Math.max(1, Math.floor(displaySignal.length / maxPoints));
+
+                        let pathData = '';
+                        for (let i = 0; i < displaySignal.length; i += step) {
+                            const t = i / fs;
+                            const x = labelWidth + t * pixelsPerSecond;
+                            const y = centerY - (displaySignal[i] - (min + max) / 2) * scale;
+
+                            if (i === 0) {
+                                pathData = `M ${x} ${y}`;
+                            } else {
+                                pathData += ` L ${x} ${y}`;
+                            }
+                        }
+
+                        return pathData && (
+                            <path
+                                d={pathData}
+                                fill="none"
+                                stroke={channelColor}
+                                strokeWidth={1}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        );
+                    })()}
+
+                    {/* Channel boundary */}
+                    <line
+                        x1={labelWidth}
+                        y1={yOffset + channelHeight}
+                        x2={labelWidth + plotWidth}
+                        y2={yOffset + channelHeight}
+                        stroke="#e5e7eb"
+                        strokeWidth={0.5}
+                    />
+                </>
             )}
-
-            {/* Channel boundary */}
-            <line
-                x1={labelWidth}
-                y1={yOffset + channelHeight}
-                x2={labelWidth + plotWidth}
-                y2={yOffset + channelHeight}
-                stroke="#e5e7eb"
-                strokeWidth={0.5}
-            />
         </g>
     );
 };
 
 /**
  * Overlay/Strip View - For ECG signals
- * Traditional ECG paper style with grid
+ * Implements fixed label column on left and scrolling content on right
  */
 const OverlayStripView = ({ parsed, timeWindow }) => {
     const channels = parsed.channels || [];
@@ -425,78 +504,120 @@ const OverlayStripView = ({ parsed, timeWindow }) => {
 
     // Layout
     const subplotHeight = 150;
-    const marginLeft = 80;
+    const marginLeft = 80; // Used as label width
     const marginRight = 20;
     const marginTop = 10;
     const marginBottom = 30;
+
+    // Refs for scroll sync
+    const colLabelsRef = useRef(null);
+    const colSignalRef = useRef(null);
+
+    const handleScroll = (e) => {
+        if (colLabelsRef.current) {
+            colLabelsRef.current.scrollTop = e.target.scrollTop;
+        }
+    };
 
     // Calculate dimensions
     const effectiveTimeWindow = Math.min(timeWindow, parsed.metadata?.duration || timeWindow);
     const widthMM = effectiveTimeWindow * MM_PER_SECOND;
     const widthPX = widthMM * PX_PER_MM;
 
-    const totalWidth = widthPX + marginLeft + marginRight;
     const totalHeight = channels.length * (subplotHeight + marginTop) + marginBottom;
+    const rightPaneWidth = widthPX + marginRight;
+
+    // Defs for grid patterns (must be available in Right Pane)
+    const renderDefs = () => (
+        <defs>
+            <pattern id="ecg-grid-minor" width={PX_PER_MM} height={PX_PER_MM} patternUnits="userSpaceOnUse">
+                <path d={`M ${PX_PER_MM} 0 L 0 0 0 ${PX_PER_MM}`} fill="none" stroke="#FFB3B3" strokeWidth="0.3" opacity="0.3" />
+            </pattern>
+            <pattern id="ecg-grid-major" width={5 * PX_PER_MM} height={5 * PX_PER_MM} patternUnits="userSpaceOnUse">
+                <path d={`M ${5 * PX_PER_MM} 0 L 0 0 0 ${5 * PX_PER_MM}`} fill="none" stroke="#E60000" strokeWidth="1.0" opacity="0.8" />
+            </pattern>
+        </defs>
+    );
 
     return (
-        <svg
-            className="signal-viewer-svg"
-            width={totalWidth}
-            height={totalHeight}
-            style={{ display: 'block' }}
-        >
-            <defs>
-                {/* Minor grid - 1mm (0.04s, 0.1mV) */}
-                <pattern
-                    id="ecg-grid-minor"
-                    width={PX_PER_MM}
-                    height={PX_PER_MM}
-                    patternUnits="userSpaceOnUse"
-                >
-                    <path
-                        d={`M ${PX_PER_MM} 0 L 0 0 0 ${PX_PER_MM}`}
-                        fill="none"
-                        stroke="#FFB3B3"
-                        strokeWidth="0.3"
-                        opacity="0.3"
-                    />
-                </pattern>
-                {/* Major grid - 5mm (0.2s, 0.5mV) */}
-                <pattern
-                    id="ecg-grid-major"
-                    width={5 * PX_PER_MM}
-                    height={5 * PX_PER_MM}
-                    patternUnits="userSpaceOnUse"
-                >
-                    <path
-                        d={`M ${5 * PX_PER_MM} 0 L 0 0 0 ${5 * PX_PER_MM}`}
-                        fill="none"
-                        stroke="#E60000"
-                        strokeWidth="1.0"
-                        opacity="0.8"
-                    />
-                </pattern>
-            </defs>
+        <div className="signal-viewer-container" style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+            {/* Left Pane: Fixed Labels */}
+            <div
+                ref={colLabelsRef}
+                style={{
+                    width: marginLeft,
+                    flexShrink: 0,
+                    overflow: 'hidden',
+                    borderRight: '1px solid #CCC',
+                    backgroundColor: '#fff',
+                    zIndex: 10
+                }}
+            >
+                <svg width={marginLeft} height={totalHeight}>
+                    {channels.map((channel, idx) => {
+                        const yOffset = idx * (subplotHeight + marginTop);
+                        return (
+                            <ECGLeadSubplot
+                                key={`label-${idx}`}
+                                channel={channel}
+                                x={marginLeft} // Coordinate logic matches original
+                                y={yOffset}
+                                width={0}
+                                height={subplotHeight}
+                                fs={fs}
+                                timeWindow={0}
+                                MM_PER_SECOND={MM_PER_SECOND}
+                                PX_PER_MM={PX_PER_MM}
+                                isLastLead={false}
+                                showLabel={true}
+                                showSignal={false}
+                            />
+                        );
+                    })}
+                </svg>
+            </div>
 
-            {channels.map((channel, idx) => {
-                const yOffset = idx * (subplotHeight + marginTop);
-                return (
-                    <ECGLeadSubplot
-                        key={idx}
-                        channel={channel}
-                        x={marginLeft}
-                        y={yOffset}
-                        width={widthPX}
-                        height={subplotHeight}
-                        fs={fs}
-                        timeWindow={effectiveTimeWindow}
-                        MM_PER_SECOND={MM_PER_SECOND}
-                        PX_PER_MM={PX_PER_MM}
-                        isLastLead={idx === channels.length - 1}
-                    />
-                );
-            })}
-        </svg>
+            {/* Right Pane: Waveforms */}
+            <div
+                ref={colSignalRef}
+                style={{
+                    flex: 1,
+                    overflow: 'auto',
+                    height: '100%'
+                }}
+                onScroll={handleScroll}
+            >
+                <svg
+                    width={rightPaneWidth}
+                    height={totalHeight}
+                    style={{ display: 'block' }}
+                >
+                    {renderDefs()}
+                    <g transform={`translate(-${marginLeft}, 0)`}>
+                        {channels.map((channel, idx) => {
+                            const yOffset = idx * (subplotHeight + marginTop);
+                            return (
+                                <ECGLeadSubplot
+                                    key={`signal-${idx}`}
+                                    channel={channel}
+                                    x={marginLeft} // Coordinate logic matches original
+                                    y={yOffset}
+                                    width={widthPX}
+                                    height={subplotHeight}
+                                    fs={fs}
+                                    timeWindow={effectiveTimeWindow}
+                                    MM_PER_SECOND={MM_PER_SECOND}
+                                    PX_PER_MM={PX_PER_MM}
+                                    isLastLead={idx === channels.length - 1}
+                                    showLabel={false}
+                                    showSignal={true}
+                                />
+                            );
+                        })}
+                    </g>
+                </svg>
+            </div>
+        </div>
     );
 };
 
@@ -513,122 +634,132 @@ const ECGLeadSubplot = ({
     timeWindow,
     MM_PER_SECOND,
     PX_PER_MM,
-    isLastLead
+    isLastLead,
+    showLabel = true,
+    showSignal = true
 }) => {
     const signal = channel.rawSignal || channel.displaySignal || [];
     const name = channel.name || channel.displayName || 'Lead';
 
-    // Get samples for time window
-    const samplesToShow = Math.min(signal.length, Math.floor(fs * timeWindow));
-    const displaySignal = signal.slice(0, samplesToShow);
+    const renderSignal = () => {
+        // Get samples for time window
+        const samplesToShow = Math.min(signal.length, Math.floor(fs * timeWindow));
+        const displaySignal = signal.slice(0, samplesToShow);
 
-    // Center the signal
-    const mean = displaySignal.reduce((a, b) => a + b, 0) / displaySignal.length || 0;
-    const centered = displaySignal.map(v => v - mean);
+        // Center the signal
+        const mean = displaySignal.reduce((a, b) => a + b, 0) / displaySignal.length || 0;
+        const centered = displaySignal.map(v => v - mean);
 
-    // Find amplitude range
-    let maxAbs = 0;
-    for (let i = 0; i < centered.length; i++) {
-        maxAbs = Math.max(maxAbs, Math.abs(centered[i]));
-    }
-    maxAbs = maxAbs || 1;
-
-    const yRangeMV = Math.ceil(maxAbs * 1.2 * 2) / 2;
-
-    // Scale functions
-    const xScale = (time) => time * MM_PER_SECOND * PX_PER_MM;
-    const yScale = (mV) => height / 2 - (mV / yRangeMV) * (height / 2);
-
-    // Downsample
-    const maxPoints = 2000;
-    const step = Math.max(1, Math.floor(displaySignal.length / maxPoints));
-
-    // Generate path
-    let pathData = '';
-    for (let i = 0; i < centered.length; i += step) {
-        const t = i / fs;
-        const px = xScale(t);
-        const py = yScale(centered[i]);
-
-        if (i === 0) {
-            pathData = `M ${px} ${py}`;
-        } else {
-            pathData += ` L ${px} ${py}`;
+        // Find amplitude range
+        let maxAbs = 0;
+        for (let i = 0; i < centered.length; i++) {
+            maxAbs = Math.max(maxAbs, Math.abs(centered[i]));
         }
-    }
+        maxAbs = maxAbs || 1;
 
-    // Time markers
-    const timeMarkers = [];
-    for (let t = 0; t <= timeWindow; t += 1) {
-        const xPos = xScale(t);
-        timeMarkers.push(
-            <g key={t}>
+        const yRangeMV = Math.ceil(maxAbs * 1.2 * 2) / 2;
+
+        // Scale functions
+        const xScale = (time) => time * MM_PER_SECOND * PX_PER_MM;
+        const yScale = (mV) => height / 2 - (mV / yRangeMV) * (height / 2);
+
+        // Downsample
+        const maxPoints = 2000;
+        const step = Math.max(1, Math.floor(displaySignal.length / maxPoints));
+
+        // Generate path
+        let pathData = '';
+        for (let i = 0; i < centered.length; i += step) {
+            const t = i / fs;
+            const px = xScale(t);
+            const py = yScale(centered[i]);
+
+            if (i === 0) {
+                pathData = `M ${px} ${py}`;
+            } else {
+                pathData += ` L ${px} ${py}`;
+            }
+        }
+
+        // Time markers
+        const timeMarkers = [];
+        for (let t = 0; t <= timeWindow; t += 1) {
+            const xPos = xScale(t);
+            timeMarkers.push(
+                <g key={t}>
+                    <line
+                        x1={xPos}
+                        y1={0}
+                        x2={xPos}
+                        y2={height}
+                        stroke="#94a3b8"
+                        strokeWidth="0.5"
+                        strokeDasharray="2 2"
+                        opacity="0.4"
+                    />
+                    {isLastLead && (
+                        <text x={xPos} y={height + 15} fontSize="9" fill="#6b7280" textAnchor="middle">
+                            {t}s
+                        </text>
+                    )}
+                </g>
+            );
+        }
+
+        return (
+            <>
+                <rect width={width} height={height} fill="#ffffff" stroke="#e5e7eb" strokeWidth="1" />
+                <rect width={width} height={height} fill="url(#ecg-grid-minor)" />
+                <rect width={width} height={height} fill="url(#ecg-grid-major)" />
+                {timeMarkers}
+                {pathData && (
+                    <path
+                        d={pathData}
+                        fill="none"
+                        stroke="#000000"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                )}
                 <line
-                    x1={xPos}
-                    y1={0}
-                    x2={xPos}
-                    y2={height}
+                    x1="0"
+                    y1={height / 2}
+                    x2={width}
+                    y2={height / 2}
                     stroke="#94a3b8"
                     strokeWidth="0.5"
-                    strokeDasharray="2 2"
-                    opacity="0.4"
+                    strokeDasharray="4 2"
+                    opacity="0.3"
                 />
-                {isLastLead && (
-                    <text x={xPos} y={height + 15} fontSize="9" fill="#6b7280" textAnchor="middle">
-                        {t}s
-                    </text>
-                )}
-            </g>
+            </>
         );
-    }
+    };
 
     return (
         <g transform={`translate(${x}, ${y})`}>
-            {/* Background */}
-            <rect width={width} height={height} fill="#ffffff" stroke="#e5e7eb" strokeWidth="1" />
+            {showSignal && renderSignal()}
 
-            {/* Grids */}
-            <rect width={width} height={height} fill="url(#ecg-grid-minor)" />
-            <rect width={width} height={height} fill="url(#ecg-grid-major)" />
-
-            {/* Time markers */}
-            {timeMarkers}
-
-            {/* Lead label */}
-            <text
-                x="10"
-                y="20"
-                fontSize="14"
-                fontWeight="bold"
-                fill={channel.color || '#16a34a'}
-                style={{ textShadow: '0 0 3px white' }}
-            >
-                {name}
-            </text>
-
-            {/* Waveform */}
-            {pathData && (
-                <path
-                    d={pathData}
-                    fill="none"
-                    stroke="#000000"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
+            {showLabel && (
+                // Position relative to x=x (which is marginLeft). 
+                // We want it visually in the left pane. 
+                // In Left Pane context: x is passed as marginLeft. transform moves us to marginLeft.
+                // We want text at, say, 70px (just before 80).
+                // x prop is 80. transform(80, y).
+                // If text x="-10", absolute x is 70.
+                // Since our Left Pane SVG is width=80, 70 is visible.
+                <text
+                    x="-10" // Relative to start of signal area
+                    y="20"
+                    fontSize="14"
+                    fontWeight="bold"
+                    fill={channel.color || '#16a34a'}
+                    textAnchor="end" // Align right
+                    style={{ textShadow: '0 0 3px white' }}
+                >
+                    {name}
+                </text>
             )}
-
-            {/* Baseline */}
-            <line
-                x1="0"
-                y1={height / 2}
-                x2={width}
-                y2={height / 2}
-                stroke="#94a3b8"
-                strokeWidth="0.5"
-                strokeDasharray="4 2"
-                opacity="0.3"
-            />
         </g>
     );
 };

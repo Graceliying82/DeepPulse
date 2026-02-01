@@ -99,7 +99,7 @@ const Dashboard = ({ signalType }) => {
         // Delay capture to ensure SVG is rendered
         const timer = setTimeout(async () => {
             try {
-                const svgElement = document.querySelector('.signal-viewer-svg');
+                const svgElement = document.querySelector('.signal-viewer-container');
                 if (svgElement) {
                     const blob = await captureSVGAsImage(svgElement);
                     setCachedSignalImage(blob);
