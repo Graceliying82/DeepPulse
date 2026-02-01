@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import SignalViewer from './SignalViewer';
 import EducationalPanel from './EducationalPanel';
+import DownloadModal from './DownloadModal';
 import { Download, RefreshCw, FileText, X, GraduationCap, Loader2 } from 'lucide-react';
 import { captureSVGAsImage } from '../utils/signalCapture';
 
@@ -16,6 +17,7 @@ const Dashboard = ({ signalType }) => {
     const [formattedNotes, setFormattedNotes] = useState(null);
     const [notesLoading, setNotesLoading] = useState(false);
     const [showEducational, setShowEducational] = useState(false);
+    const [showDownloadModal, setShowDownloadModal] = useState(false);
     const [cachedSignalImage, setCachedSignalImage] = useState(null); // Pre-captured image for Learn modal
 
     // Map signalType to category key
@@ -97,7 +99,7 @@ const Dashboard = ({ signalType }) => {
         // Delay capture to ensure SVG is rendered
         const timer = setTimeout(async () => {
             try {
-                const svgElement = document.querySelector('.signal-viewer-svg');
+                const svgElement = document.querySelector('.signal-viewer-container');
                 if (svgElement) {
                     const blob = await captureSVGAsImage(svgElement);
                     setCachedSignalImage(blob);
@@ -138,20 +140,6 @@ const Dashboard = ({ signalType }) => {
             }
         } catch (err) {
             console.error("Failed to load record:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const downloadSample = async () => {
-        // Hardcoded logic for MVP demo
-        const slug = signalType === 'Neuro' ? 'eegmmidb' : 'ptbdb';
-        setLoading(true);
-        try {
-            await axios.post('/api/data/download', { db_slug: slug, num_records: 2 });
-            await fetchDatabasesAndRecords();
-        } catch (err) {
-            alert("Download failed");
         } finally {
             setLoading(false);
         }
@@ -267,9 +255,9 @@ const Dashboard = ({ signalType }) => {
 
                 <div style={{ flex: 1 }} />
 
-                <button className="action-btn primary" onClick={downloadSample} disabled={loading}>
+                <button className="action-btn primary" onClick={() => setShowDownloadModal(true)} disabled={loading}>
                     <Download size={18} style={{ marginRight: 8 }} />
-                    Download Sample Data
+                    Download Data
                 </button>
             </div>
 
@@ -431,6 +419,16 @@ const Dashboard = ({ signalType }) => {
                     signalData={signalData}
                     onClose={() => setShowEducational(false)}
                     preloadedImage={cachedSignalImage}
+                />
+            )}
+
+            {/* Download Modal */}
+            {showDownloadModal && (
+                <DownloadModal
+                    category={getCategoryKey()}
+                    signalType={signalType}
+                    onClose={() => setShowDownloadModal(false)}
+                    onDownloadComplete={() => fetchDatabasesAndRecords()}
                 />
             )}
 

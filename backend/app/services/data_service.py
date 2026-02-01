@@ -93,96 +93,189 @@ def list_patients(data_dir=None, category=None):
     """
     Returns a list of record names.
     If category is specified, only returns records from that category.
+    Supports both wfdb (.hea) and EDF (.edf) formats.
     """
     if category:
         target_dir = get_category_dir(category, data_dir or DEFAULT_DATA_DIR)
     else:
         target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    
+
     ensure_data_dir(target_dir)
-    
+
     records = []
     for root, dirs, files in os.walk(target_dir):
         for file in files:
-            if file.endswith(".hea"):
+            # Support both wfdb (.hea) and EDF (.edf) formats
+            if file.endswith(".hea") or file.endswith(".edf"):
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, target_dir)
                 records.append(os.path.splitext(rel_path)[0])
-    
+
     return sorted(records)
 
 def download_data(db_slug, num_records=5, random_shuffle=True, category=None, data_dir=None):
     """
     Downloads data to a category-specific directory.
     Category is auto-detected from db_slug if not provided.
+    Supports both wfdb format and EDF format databases.
     """
     if not category:
         category = get_category_from_db(db_slug)
-    
+
     # Build target directory: data/{category}/{db_slug}/
     base_dir = data_dir if data_dir else DEFAULT_DATA_DIR
     target_dir = os.path.join(get_category_dir(category, base_dir), db_slug)
     ensure_data_dir(target_dir)
-    
+
     logger.info(f"Downloading {num_records} records from {db_slug} to category '{category}'...")
-    
+
     try:
         all_records = wfdb.get_record_list(db_slug)
     except (FileNotFoundError, ValueError) as e:
         logger.error(f"Error fetching record list: {e}")
         raise e
-    
+
+    # Detect if this is an EDF-only database
+    is_edf_database = all_records and all_records[0].endswith('.edf')
+    logger.info(f"Database format: {'EDF' if is_edf_database else 'WFDB'}")
+
     # Check existing records in this specific db directory
     existing = set(list_patients(data_dir=target_dir))
-    candidates = [r for r in all_records if r not in existing]
-    
+
+    # For EDF databases, strip the .edf extension for comparison
+    if is_edf_database:
+        candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
+    else:
+        candidates = [r for r in all_records if r not in existing]
+
     if not candidates:
         logger.info("All records already downloaded or none available.")
         return []
-        
+
     if random_shuffle:
         random.shuffle(candidates)
         target_records = candidates[:num_records]
     else:
         target_records = candidates[:num_records]
-    
+
     if not target_records:
         return []
-        
+
+    downloaded = []
     # Sequential download to avoid multiprocessing issues
     for rec in target_records:
         try:
             logger.info(f"Downloading record: {rec}")
-            wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
+            if is_edf_database:
+                # Use dl_files for EDF format (no .hea companion files)
+                wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
+            else:
+                # Use dl_database for standard wfdb format
+                wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
+            downloaded.append(rec)
         except Exception as e:
             logger.error(f"Failed to download record {rec}: {e}")
-            
-    return target_records
 
-def load_record(record_name, data_dir=None, category=None):
+    return downloaded
+
+def load_record(record_name, data_dir=None, category=None, max_duration=60):
     """
     Loads signal and metadata.
     If category is provided, looks in category directory.
+    Supports both wfdb format (.hea/.dat) and EDF format (.edf).
+    max_duration: Limit loading to this many seconds (default 60s).
     """
     if category:
         target_dir = get_category_dir(category, data_dir or DEFAULT_DATA_DIR)
     else:
         target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-        
+
     record_path = os.path.join(target_dir, record_name)
-    
+
+    # Check if this is an EDF file
+    edf_path = record_path + '.edf'
+    hea_path = record_path + '.hea'
+
+    if os.path.exists(edf_path):
+        # Load EDF format using pyedflib
+        return _load_edf_record(edf_path, max_duration=max_duration)
+    elif os.path.exists(hea_path):
+        # Load standard wfdb format
+        return _load_wfdb_record(record_path, max_duration=max_duration)
+    else:
+        raise FileNotFoundError(f"Record not found: {record_name}")
+
+
+def _load_wfdb_record(record_path, max_duration=60):
+    """Load a standard wfdb format record with duration limit."""
     try:
-        signals, fields = wfdb.rdsamp(record_path)
+        # First read header to get sampling frequency
+        header = wfdb.rdheader(record_path)
+        fs = header.fs
         
+        # Calculate samples to read
+        sampto = int(fs * max_duration)
+        
+        # Read signals with limit
+        signals, fields = wfdb.rdsamp(record_path, sampto=sampto)
+
+        # Add note about truncation
+        comments = fields.get('comments', [])
+        comments.append(f"Standard View: First {max_duration}s of data shown")
+
         return {
             "signals": signals,
             "fs": fields['fs'],
-            "comments": fields.get('comments', []),
+            "comments": comments,
             "sig_name": fields.get('sig_name', []),
             "units": fields.get('units', [])
         }
     except Exception as e:
-        logger.error(f"Failed to load record {record_name}: {e}")
+        logger.error(f"Failed to load wfdb record {record_path}: {e}")
         if "sampto must be greater than sampfrom" in str(e):
-             raise ValueError("Corrupted Record: File appears empty.")
+            raise ValueError("Corrupted Record: File appears empty.")
+        raise e
+
+
+def _load_edf_record(edf_path, max_duration=30):
+    """
+    Load an EDF format record using pyedflib.
+    max_duration: Maximum duration in seconds to load (EDF files can be very long).
+    """
+    try:
+        import pyedflib
+
+        f = pyedflib.EdfReader(edf_path)
+
+        n_signals = f.signals_in_file
+        signal_labels = f.getSignalLabels()
+
+        # Get sample frequencies (may vary per channel)
+        sample_freqs = [f.getSampleFrequency(i) for i in range(n_signals)]
+        fs = sample_freqs[0]  # Use first channel's frequency as primary
+
+        # Calculate samples to read (limit to max_duration for performance)
+        samples_to_read = int(fs * max_duration)
+
+        # Read signals (limit to reasonable number of channels for display)
+        max_channels = min(n_signals, 8)  # Limit to 8 channels for UI
+        signals = []
+        for i in range(max_channels):
+            signal = f.readSignal(i, 0, samples_to_read)
+            signals.append(signal)
+
+        f.close()
+
+        # Stack into numpy array (samples x channels)
+        signals_array = np.column_stack(signals) if signals else np.array([])
+
+        return {
+            "signals": signals_array,
+            "fs": fs,
+            "comments": [f"EDF File: {os.path.basename(edf_path)}", f"Duration: {max_duration}s of data shown"],
+            "sig_name": signal_labels[:max_channels],
+            "units": ['uV'] * max_channels  # EDF typically uses microvolts for EEG
+        }
+    except Exception as e:
+        logger.error(f"Failed to load EDF record {edf_path}: {e}")
         raise e
