@@ -55,6 +55,7 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     signal_context: Optional[str] = None
     include_suggestions: bool = True  # Return contextual suggestions with response
+    api_key: Optional[str] = None  # User's own Gemini API key (BYOK)
 
 class FormatNotesRequest(BaseModel):
     notes: List[str]
@@ -134,10 +135,10 @@ async def analyze_signal(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, api_key: Optional[str] = None):
+def chat(req: ChatRequest):
     """Chat with Pulse, the DeepPulse AI assistant."""
     msg_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
-    response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=api_key)
+    response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=req.api_key)
 
     result = {"role": "assistant", "content": response}
 

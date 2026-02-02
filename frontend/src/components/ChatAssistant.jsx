@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import geminiIcon from '../assets/gemini.png';
+import { useApiKey } from '../contexts/ApiKeyContext';
 
 // Welcome message from Pulse
 const WELCOME_MESSAGE = {
@@ -71,6 +72,7 @@ const ChatAssistant = ({ signalType }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const scrollRef = useRef(null);
+    const { apiKey, hasApiKey } = useApiKey();
 
     // Update context note when signal type changes
     useEffect(() => {
@@ -134,7 +136,8 @@ const ChatAssistant = ({ signalType }) => {
             const response = await axios.post('/api/chat', {
                 messages: [...messages, userMsg],
                 signal_context: signalType ? `Active Signal Domain: ${signalType}` : 'No signal loaded',
-                include_suggestions: true
+                include_suggestions: true,
+                api_key: apiKey || undefined
             });
 
             const botMsg = { role: 'assistant', content: response.data.content };
@@ -148,9 +151,16 @@ const ChatAssistant = ({ signalType }) => {
             }
         } catch (error) {
             console.error('Chat error:', error);
+            let errorContent = "😅 Oops! I had trouble connecting. Please check your internet connection and try again.";
+
+            // Check if it's an API key error
+            if (error.response?.data?.detail?.includes('API Key') || !hasApiKey) {
+                errorContent = "🔑 To chat with me, please add your Gemini API key in Settings (gear icon at bottom-right). It's free!";
+            }
+
             const errorMsg = {
                 role: 'assistant',
-                content: "😅 Oops! I had trouble connecting. Please check your internet connection and try again."
+                content: errorContent
             };
             setMessages(prev => [...prev, errorMsg]);
             setSuggestions(["🔄 Try again", "❓ What can you help with?"]);

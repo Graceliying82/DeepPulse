@@ -3,12 +3,16 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
 import ChatAssistant from './components/ChatAssistant'
 import ResizableDivider from './components/ResizableDivider'
+import SettingsModal from './components/SettingsModal'
+import { useApiKey } from './contexts/ApiKeyContext'
 import './App.css'
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [activeSignalType, setActiveSignalType] = useState('Cardiac')
   const [chatPanelWidth, setChatPanelWidth] = useState(350)
+  const [showSettings, setShowSettings] = useState(false)
+  const { hasApiKey } = useApiKey()
 
   // Sync CSS variable with React state (for when drag ends)
   useEffect(() => {
@@ -48,6 +52,22 @@ function App() {
       <div className="right-panel">
         <ChatAssistant signalType={activeSignalType} />
       </div>
+
+      {/* Settings button - fixed position */}
+      <button
+        className={`settings-fab ${!hasApiKey ? 'needs-attention' : ''}`}
+        onClick={() => setShowSettings(true)}
+        title="Settings"
+      >
+        ⚙️
+        {!hasApiKey && <span className="attention-dot"></span>}
+      </button>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </div>
   )
 }
