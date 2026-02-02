@@ -81,6 +81,11 @@ const SignalViewer = ({ data, type }) => {
 const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom, onZoomChange }) => {
     const metadata = parsed?.metadata || {};
     const isEEG = signalType === 'eeg';
+    const isHemodynamic = signalType === 'hemodynamic';
+
+    let title = '❤️ ECG';
+    if (isEEG) title = '🧠 EEG';
+    else if (isHemodynamic) title = '💉 Hemodynamic';
 
     return (
         <div style={{
@@ -96,7 +101,7 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom
         }}>
             <div>
                 <div style={{ fontSize: 14, color: '#374151' }}>
-                    <strong>{isEEG ? '🧠 EEG' : '❤️ ECG'}</strong>
+                    <strong>{title}</strong>
                     <span style={{ margin: '0 8px', color: '#d1d5db' }}>|</span>
                     <strong>Rate:</strong> {metadata.samplingRate} Hz
                     <span style={{ margin: '0 8px', color: '#d1d5db' }}>|</span>
@@ -108,6 +113,10 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom
                     {isEEG ? (
                         <>
                             {metadata.montage?.name || 'Bipolar Montage'} • Channels organized by anatomical region
+                        </>
+                    ) : isHemodynamic ? (
+                        <>
+                            Multi-parameter Monitoring • {metadata.description || 'Hemodynamic Signals'}
                         </>
                     ) : (
                         <>

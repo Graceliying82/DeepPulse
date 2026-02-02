@@ -175,7 +175,34 @@ const Dashboard = ({ signalType }) => {
         <div className="dashboard-grid">
             {/* Top Bar: Selector & Actions */}
             <div className="glass-panel" style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-                <h2>{signalType} Workspace</h2>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <h2 style={{ margin: 0 }}>{signalType === 'Respiration' ? 'Oxygen & Respiration' : signalType} Workspace</h2>
+                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                        {signalType === 'Cardiac' && (
+                            <>
+                                <span style={{ marginRight: '12px' }}>Supported: <strong style={{ color: '#059669' }}>ECG, EGM</strong></span>
+                                <span>Coming soon: <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Fetal ECG, VCG</span></span>
+                            </>
+                        )}
+                        {signalType === 'Neuro' && (
+                            <>
+                                <span style={{ marginRight: '12px' }}>Supported: <strong style={{ color: '#059669' }}>EEG</strong></span>
+                                <span>Coming soon: <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Evoked Potentials, EMG</span></span>
+                            </>
+                        )}
+                        {signalType === 'Hemodynamic' && (
+                            <>
+                                <span style={{ marginRight: '12px' }}>Supported: <strong style={{ color: '#059669' }}>ABP</strong></span>
+                                <span>Coming soon: <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>PAP, CVP, ICP</span></span>
+                            </>
+                        )}
+                        {signalType === 'Respiration' && (
+                            <>
+                                <span>Coming soon: <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>PPG, Impedance Pneumography</span></span>
+                            </>
+                        )}
+                    </div>
+                </div>
 
                 {/* Database Selector */}
                 <select

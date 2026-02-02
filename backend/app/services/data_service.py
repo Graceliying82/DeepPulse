@@ -214,14 +214,23 @@ def _load_wfdb_record(record_path, max_duration=60):
         fs = header.fs
         
         # Calculate samples to read
-        sampto = int(fs * max_duration)
+        calculated_sampto = int(fs * max_duration)
+        sampto = min(calculated_sampto, header.sig_len)
         
         # Read signals with limit
         signals, fields = wfdb.rdsamp(record_path, sampto=sampto)
 
-        # Add note about truncation
+        # Add note about truncation or full view
         comments = fields.get('comments', [])
-        comments.append(f"Standard View: First {max_duration}s of data shown")
+        if sampto < header.sig_len:
+            comments.append(f"Standard View: First {max_duration}s of data shown")
+        else:
+            comments.append("Complete Record Shown")
+
+        # Sanitize signals (replace NaN/Inf with 0) to prevent JSON errors
+        # Check if signals is a numpy array or valid list
+        if signals is not None:
+             signals = np.nan_to_num(signals, nan=0.0, posinf=0.0, neginf=0.0)
 
         return {
             "signals": signals,
