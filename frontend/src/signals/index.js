@@ -44,13 +44,15 @@ import { ecgInterpreter } from './interpreters/ECGInterpreter';
 import { eegInterpreter } from './interpreters/EEGInterpreter';
 import { ecgVisualization } from './visualizations/ECGVisualization';
 import { eegVisualization } from './visualizations/EEGVisualization';
+import { hemodynamicInterpreter } from './interpreters/HemodynamicInterpreter';
+import { hemodynamicVisualization } from './visualizations/HemodynamicVisualization';
 
 // Register ECG/Cardiac signals
 SignalRegistry.register(
     'ecg',
     ecgInterpreter,
     ecgVisualization,
-    ['cardiac', 'Cardiac', 'ecg', 'ECG', 'hemodynamic', 'Hemodynamic']
+    ['cardiac', 'Cardiac', 'ecg', 'ECG']
 );
 
 // Register EEG/Neurological signals
@@ -59,6 +61,14 @@ SignalRegistry.register(
     eegInterpreter,
     eegVisualization,
     ['neurological', 'Neurological', 'neuro', 'Neuro', 'eeg', 'EEG']
+);
+
+// Register Hemodynamic signals
+SignalRegistry.register(
+    'hemodynamic',
+    hemodynamicInterpreter,
+    hemodynamicVisualization,
+    ['hemodynamic', 'Hemodynamic', 'abp', 'pressure', 'vital']
 );
 
 // ============================================================================
