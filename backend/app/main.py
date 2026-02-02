@@ -32,6 +32,7 @@ app.add_middleware(
 class DownloadRequest(BaseModel):
     db_slug: str
     num_records: int = 5
+    random_shuffle: bool = True  # Randomly select records from database
     category: Optional[str] = None  # Auto-detected if not provided
 
 class DatabaseRecommendationRequest(BaseModel):
@@ -83,6 +84,7 @@ def download_data(req: DownloadRequest):
         records = data_service.download_data(
             req.db_slug,
             req.num_records,
+            random_shuffle=req.random_shuffle,
             category=req.category
         )
         return {"status": "success", "downloaded": len(records), "records": records}

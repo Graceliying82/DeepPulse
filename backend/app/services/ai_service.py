@@ -297,6 +297,9 @@ def recommend_databases(user_role, category, user_interest=None, api_key=None):
         return [{"error": "parse_error", "message": "AI returned invalid JSON"}]
     except Exception as e:
         logger.error(f"Database recommendation failed: {e}")
+        err_str = str(e)
+        if "429" in err_str: return [{"error": "quota_exceeded", "message": "Daily quota exceeded. Try again tomorrow, or check your API quota."}]
+        if "503" in err_str: return [{"error": "overloaded", "message": "AI Service Overloaded. Please try again."}]
         return [{"error": "api_error", "message": str(e)}]
 
 def format_clinical_notes(notes, api_key=None):
