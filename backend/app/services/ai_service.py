@@ -5,8 +5,53 @@ import logging
 import time
 import json
 
+from .knowledge_base import get_relevant_knowledge, generate_suggestions as kb_generate_suggestions
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# PULSE - THE DEEPPULSE AI ASSISTANT
+# =============================================================================
+
+PULSE_SYSTEM_PROMPT = """
+You are **Pulse**, the friendly DeepPulse assistant! 🩺
+
+## Your Personality
+- Warm, encouraging, and educational
+- Use occasional emojis to be engaging (but not excessive - max 2-3 per response)
+- Celebrate user progress ("Great question!", "You're getting the hang of it!")
+- Be concise but helpful - aim for 2-4 short paragraphs max
+- Use markdown formatting for clarity (bold for emphasis, lists for steps)
+
+## Your Knowledge Boundaries (CRITICAL)
+You ONLY know about DeepPulse features provided in your context below.
+**NEVER make up features, databases, or capabilities that aren't listed.**
+If asked about something not in your knowledge, say:
+"I'm not sure about that specific feature. Here's what I can help you with in DeepPulse..."
+
+## Your Role
+1. Help users understand medical signals (ECG, EEG, etc.)
+2. Guide them through DeepPulse features step-by-step
+3. Suggest relevant next actions
+4. Answer questions about available PhysioNet databases
+5. Explain how to use the software effectively
+
+## What You Can Discuss
+{knowledge_context}
+
+## What You CANNOT Do
+- Give actual medical diagnoses (always add "for educational purposes only")
+- Claim features that aren't listed in your knowledge
+- Make up database names or signal types not in your knowledge
+- Provide specific clinical advice for real patients
+
+## Response Guidelines
+- Start responses with a brief, direct answer
+- Then provide helpful context or next steps
+- End with a suggestion or question to keep the conversation going
+- Keep responses focused and scannable
+"""
 
 def call_genai_with_retry(client, model, contents, retries=3, delay=2):
     for attempt in range(retries):
@@ -126,36 +171,76 @@ def analyze_signal(image_bytes, user_notes=None, patient_metadata=None, mode="fu
 
 def chat_with_ai(messages, signal_context=None, api_key=None):
     """
-    Simple chat interface.
-    messages: list of {"role": "user"|"assistant", "content": "..."}
+    Enhanced chat interface with Pulse personality and knowledge grounding.
+
+    Args:
+        messages: list of {"role": "user"|"assistant", "content": "..."}
+        signal_context: Current signal context (e.g., "Cardiac", "Neurological")
+        api_key: Optional API key override
+
+    Returns:
+        AI response text
     """
     client, msg = get_genai_client(api_key)
     if not client:
-        return "System: API Key missing."
+        return "👋 Hi! I'm Pulse, but I can't connect right now. Please check that your API key is configured in the settings."
 
-    # Construct history
-    # For MVP, just concatenation or using simple chat structure
-    # Gemini 3 might verify specific structure.
-    # We will just do a generic generation for now with history text.
-    
-    history_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
-    
-    prompt = f"""
-    You are DeepPulse Research Assistant.
-    Context: {signal_context or 'No active signal context.'}
-    
-    Conversation History:
-    {history_text}
-    
-    USER: {messages[-1]['content'] if messages else ''}
-    ASSISTANT:
-    """
-    
+    # Get the user's latest message for knowledge retrieval
+    user_message = messages[-1]['content'] if messages else ""
+
+    # Retrieve relevant knowledge based on query and context
+    knowledge_context = get_relevant_knowledge(user_message, signal_context)
+
+    # Build the system prompt with knowledge
+    system_prompt = PULSE_SYSTEM_PROMPT.format(knowledge_context=knowledge_context)
+
+    # Build conversation history (limit to last 10 messages for context window)
+    recent_messages = messages[-10:] if len(messages) > 10 else messages
+    history_text = "\n".join([
+        f"{'User' if m['role'] == 'user' else 'Pulse'}: {m['content']}"
+        for m in recent_messages[:-1]  # Exclude last message, it goes separately
+    ])
+
+    # Construct the full prompt
+    prompt = f"""{system_prompt}
+
+## Current Context
+Signal Type: {signal_context or 'No signal loaded'}
+
+## Conversation History
+{history_text if history_text else '(This is the start of the conversation)'}
+
+## User's Message
+{user_message}
+
+## Your Response (as Pulse)
+"""
+
     try:
         response = call_genai_with_retry(client, 'gemini-3-flash-preview', [prompt])
         return response.text
     except Exception as e:
-        return f"Error: {str(e)}"
+        err_str = str(e)
+        if "429" in err_str:
+            return "😅 Oops! I've hit my daily limit. Try again tomorrow, or check your API quota."
+        if "503" in err_str or "Overloaded" in err_str:
+            return "🔄 The AI service is busy right now. Please try again in a moment!"
+        logger.error(f"Chat error: {e}")
+        return f"❌ Something went wrong: {str(e)[:100]}. Please try again."
+
+
+def get_chat_suggestions(signal_context=None, last_message=""):
+    """
+    Get contextual suggestions for the chat interface.
+
+    Args:
+        signal_context: Current signal context
+        last_message: User's last message
+
+    Returns:
+        List of suggestion strings
+    """
+    return kb_generate_suggestions(signal_context, last_message)
 
 def recommend_databases(user_role, category, user_interest=None, api_key=None):
     """

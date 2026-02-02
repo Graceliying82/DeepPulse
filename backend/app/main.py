@@ -54,6 +54,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     signal_context: Optional[str] = None
+    include_suggestions: bool = True  # Return contextual suggestions with response
 
 class FormatNotesRequest(BaseModel):
     notes: List[str]
@@ -134,10 +135,21 @@ async def analyze_signal(
 
 @app.post("/api/chat")
 def chat(req: ChatRequest, api_key: Optional[str] = None):
-    """Chat with AI Agent."""
+    """Chat with Pulse, the DeepPulse AI assistant."""
     msg_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
     response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=api_key)
-    return {"role": "assistant", "content": response}
+
+    result = {"role": "assistant", "content": response}
+
+    # Include contextual suggestions if requested
+    if req.include_suggestions:
+        last_message = req.messages[-1].content if req.messages else ""
+        result["suggestions"] = ai_service.get_chat_suggestions(
+            req.signal_context,
+            last_message
+        )
+
+    return result
 
 @app.post("/api/ai/format-notes")
 def format_clinical_notes(req: FormatNotesRequest, api_key: Optional[str] = None):
