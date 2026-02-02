@@ -2,18 +2,20 @@
 
 ## 1. Executive Summary
 
-**DeepPulse** is an advanced educational and research platform designed for the visualization and AI-powered analysis of physiological signals (ECG, EEG, etc.). By combining medical-grade signal processing with Google's Gemini 2.0 Flash AI, DeepPulse democratizes access to expert-level interpretation for medical students and researchers.
+**DeepPulse** is an advanced educational and research platform designed for the visualization and AI-powered analysis of physiological signals (ECG, EEG, etc.). By combining medical-grade signal processing with **Google's Gemini 3.0** AI, DeepPulse democratizes access to expert-level interpretation for medical students and researchers.
 
 ---
 
 ## 2. Product Overview
 
 ### Core Value Proposition
+
 - **Medical-Grade Precision:** True calibration (e.g., 25mm/s, 10mm/mV for ECG) ensuring clinical relevance.
 - **AI-Augmented Learning:** Interactive "Socratic" hints and full diagnostic explanations powered by Gemini.
 - **Data Accessibility:** Direct integration with PhysioNet's massive repository of open-source physiological data.
 
 ### Key Features
+
 | Feature | Description |
 | :--- | :--- |
 | **Signal Visualization** | SVG-based rendering with professional grids, standard time scales, and amplitude scaling. |
@@ -28,18 +30,57 @@
 DeepPulse employs a **Modern Web Application** architecture with a clean separation of concerns between data sourcing, domain interpretation, and visualization.
 
 ### Architecture Diagram
+
 ```mermaid
 graph TD
-    User[User] --> Frontend[React 19 Frontend]
-    Frontend -- API Requests --> Backend[FastAPI Backend]
-    Backend -- Fetch Data --> PhysioNet[PhysioNet Database (WFDB)]
-    Backend -- AI Analysis --> Gemini[Google Gemini 2.0 Flash]
-    Backend -- Cache Data --> LocalStorage[Local File Storage]
+    subgraph External_Services ["External Services"]
+        PN["PhysioNet (WFDB)"]
+        G3["Google Gemini 3.0"]
+    end
+
+    subgraph Backend_FastAPI ["Backend (FastAPI)"]
+        DS["Data Service"]
+        AI["AI Service"]
+        Cache[("Local Cache")]
+    end
+
+    subgraph Frontend_React ["Frontend (React 19)"]
+        UI["User Interface"]
+        SR["SignalRegistry"]
+        
+        subgraph Domain_Logic ["Domain Logic (Triad)"]
+            INT["Interpreter (Parses Raw Data)"]
+            VIS["Visualization Config (Defines Layout)"]
+        end
+        
+        SV["SignalViewer Component"]
+    end
+
+    %% Data Flow
+    UI -- "Request Record" --> DS
+    DS -- "Fetch & Convert" --> PN
+    DS -- "Reads/Writes" --> Cache
+    DS -- "Returns Raw JSON" --> UI
+    
+    %% Signal Processing Flow
+    UI -- "1. Raw Data" --> SR
+    SR -- "2. Selects" --> INT
+    SR -- "2. Selects" --> VIS
+    INT -- "3. Structured Signals" --> SV
+    VIS -- "4. Grid/Layout Props" --> SV
+    SV -- "5. Renders SVG" --> UI
+
+    %% AI Flow
+    UI -- "Request Insight" --> AI
+    AI -- "Context & Prompt" --> G3
+    G3 -- "Analysis" --> AI
+    AI -- "Response" --> UI
 ```
 
 ### Component Breakdown
 
 #### Frontend (Client-Side)
+
 - **Framework:** React 19 + Vite
 - **Responsibility:** User Interface, Interactive Visualization, Signal Parsing.
 - **Key Modules:**
@@ -49,11 +90,12 @@ graph TD
   - `Visualizations`: Configuration objects defining layouts (Overlay vs. Stacked) and grids.
 
 #### Backend (Server-Side)
+
 - **Framework:** FastAPI (Python)
 - **Responsibility:** Data Orchestration, AI Proxy, Formatting.
 - **Key Modules:**
   - `data_service`: Handles `wfdb` (Waveform Database) operations to fetch/convert PhysioNet data.
-  - `ai_service`: Manages prompt engineering and context windowing for Gemini AI interactions.
+  - `ai_service`: Manages prompt engineering and context windowing for **Gemini 3.0** interactions.
 
 ---
 
@@ -62,17 +104,19 @@ graph TD
 The platform uses a **Modular Extensible Architecture** to handle the complexity of different medical domains without creating a monolithic mess.
 
 ### The "Triad" Pattern
+
 For every supported signal type (e.g., ECG, EEG), DeepPulse defines a triad:
 
-1.  **Interpreter:** Pure domain logic.
-    *   *Example (ECG):* Knows that Lead II, III, and aVF represent the "Inferior" surface of the heart.
-    *   *Example (EEG):* Knows standard 10-20 electrode placement and "Bipolar Montage" chains.
-2.  **Visualization Config:** Rendering specifications.
-    *   *Example (ECG):* Red grid, 25mm/s speed, overlay layout.
-    *   *Example (EEG):* Stacked layout, 30mm/s speed, 7μV/mm sensitivity.
-3.  **Registry:** Maps raw data metadata to the correct Triad.
+1. **Interpreter:** Pure domain logic.
+    - *Example (ECG):* Knows that Lead II, III, and aVF represent the "Inferior" surface of the heart.
+    - *Example (EEG):* Knows standard 10-20 electrode placement and "Bipolar Montage" chains.
+2. **Visualization Config:** Rendering specifications.
+    - *Example (ECG):* Red grid, 25mm/s speed, overlay layout.
+    - *Example (EEG):* Stacked layout, 30mm/s speed, 7μV/mm sensitivity.
+3. **Registry:** Maps raw data metadata to the correct Triad.
 
 start logic:
+
 ```
 Raw Data -> SignalRegistry -> (Selects Interpreter) -> Structured Data -> (Selects Vis Config) -> SignalViewer
 ```
@@ -86,7 +130,7 @@ Raw Data -> SignalRegistry -> (Selects Interpreter) -> Structured Data -> (Selec
 | **Frontend** | React 19, Vite, TailwindCSS, D3.js (concepts adapted for SVG), Lucide React |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn, Pydantic |
 | **Data Engineering** | WFDB (Waveform Database Library), NumPy, Pandas |
-| **AI / LLM** | Google Gemini 2.0 Flash (Multimodal capabilities) |
+| **AI / LLM** | **Google Gemini 3.0** (Multimodal capabilities) |
 | **DevOps / Tooling** | Git, Pytest, ESLint |
 
 ---
