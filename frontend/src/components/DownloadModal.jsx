@@ -12,6 +12,10 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0, currentDb: '' });
     const [error, setError] = useState(null);
 
+    // Download options
+    const [numRecords, setNumRecords] = useState(3);
+    const [shuffleRecords, setShuffleRecords] = useState(true);
+
     // Category display names and example interests
     const categoryInfo = {
         cardiac: {
@@ -50,9 +54,13 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
             });
 
             const recs = response.data.recommendations;
-            if (recs && recs.length > 0 && !recs[0].error) {
-                setRecommendations(recs);
-                setStep('recommendations');
+            if (recs && recs.length > 0) {
+                if (recs[0].error) {
+                    setError(recs[0].message);
+                } else {
+                    setRecommendations(recs);
+                    setStep('recommendations');
+                }
             } else {
                 setError('Failed to get recommendations. Please try again.');
             }
@@ -87,7 +95,8 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
             try {
                 await axios.post('/api/data/download', {
                     db_slug: slug,
-                    num_records: 3,
+                    num_records: numRecords,
+                    random_shuffle: shuffleRecords,
                     category: category
                 });
             } catch (err) {
@@ -370,7 +379,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                             }}>
                                                 {selectedDatabases.includes(rec.slug) && (
                                                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                                        <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                                                     </svg>
                                                 )}
                                             </div>
@@ -409,6 +418,108 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                         </div>
                                     </div>
                                 ))}
+
+                                {/* Download Options */}
+                                <div style={{
+                                    padding: '16px',
+                                    backgroundColor: '#f9fafb',
+                                    borderRadius: '8px',
+                                    marginTop: '16px',
+                                    border: '1px solid #e5e7eb'
+                                }}>
+                                    <div style={{
+                                        fontSize: '13px',
+                                        fontWeight: 600,
+                                        color: '#374151',
+                                        marginBottom: '12px'
+                                    }}>
+                                        Download Options
+                                    </div>
+
+                                    {/* Number of Records */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        marginBottom: '12px'
+                                    }}>
+                                        <label style={{
+                                            fontSize: '13px',
+                                            color: '#6b7280'
+                                        }}>
+                                            Records per database
+                                        </label>
+                                        <select
+                                            value={numRecords}
+                                            onChange={(e) => setNumRecords(Number(e.target.value))}
+                                            style={{
+                                                padding: '6px 10px',
+                                                borderRadius: '6px',
+                                                border: '1px solid #d1d5db',
+                                                fontSize: '13px',
+                                                color: '#111827',
+                                                backgroundColor: 'white',
+                                                cursor: 'pointer',
+                                                minWidth: '80px'
+                                            }}
+                                        >
+                                            <option value={1}>1</option>
+                                            <option value={2}>2</option>
+                                            <option value={3}>3</option>
+                                            <option value={5}>5</option>
+                                            <option value={10}>10</option>
+                                            <option value={20}>20</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Shuffle Toggle */}
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                    }}>
+                                        <div>
+                                            <label style={{
+                                                fontSize: '13px',
+                                                color: '#6b7280',
+                                                display: 'block'
+                                            }}>
+                                                Shuffle records
+                                            </label>
+                                            <span style={{
+                                                fontSize: '11px',
+                                                color: '#9ca3af'
+                                            }}>
+                                                {shuffleRecords ? 'Random selection' : 'First records in order'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => setShuffleRecords(!shuffleRecords)}
+                                            style={{
+                                                width: '44px',
+                                                height: '24px',
+                                                borderRadius: '12px',
+                                                border: 'none',
+                                                backgroundColor: shuffleRecords ? '#3b82f6' : '#d1d5db',
+                                                cursor: 'pointer',
+                                                position: 'relative',
+                                                transition: 'background-color 0.2s'
+                                            }}
+                                        >
+                                            <span style={{
+                                                position: 'absolute',
+                                                top: '2px',
+                                                left: shuffleRecords ? '22px' : '2px',
+                                                width: '20px',
+                                                height: '20px',
+                                                borderRadius: '50%',
+                                                backgroundColor: 'white',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                                transition: 'left 0.2s'
+                                            }} />
+                                        </button>
+                                    </div>
+                                </div>
 
                                 {/* Action Buttons */}
                                 <div style={{
@@ -452,7 +563,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                         }}
                                     >
                                         <Download size={18} />
-                                        Download {selectedDatabases.length > 0 ? `(${selectedDatabases.length})` : ''}
+                                        Download {selectedDatabases.length > 0 ? `${selectedDatabases.length * numRecords} records` : ''}
                                     </button>
                                 </div>
                             </div>

@@ -32,6 +32,7 @@ app.add_middleware(
 class DownloadRequest(BaseModel):
     db_slug: str
     num_records: int = 5
+    random_shuffle: bool = True  # Randomly select records from database
     category: Optional[str] = None  # Auto-detected if not provided
 
 class DatabaseRecommendationRequest(BaseModel):
@@ -54,6 +55,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     signal_context: Optional[str] = None
+    include_suggestions: bool = True  # Return contextual suggestions with response
+    api_key: Optional[str] = None  # User's own Gemini API key (BYOK)
 
 class FormatNotesRequest(BaseModel):
     notes: List[str]
@@ -81,6 +84,7 @@ def download_data(req: DownloadRequest):
         records = data_service.download_data(
             req.db_slug,
             req.num_records,
+            random_shuffle=req.random_shuffle,
             category=req.category
         )
         return {"status": "success", "downloaded": len(records), "records": records}
@@ -133,11 +137,22 @@ async def analyze_signal(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, api_key: Optional[str] = None):
-    """Chat with AI Agent."""
+def chat(req: ChatRequest):
+    """Chat with Pulse, the DeepPulse AI assistant."""
     msg_dicts = [{"role": m.role, "content": m.content} for m in req.messages]
-    response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=api_key)
-    return {"role": "assistant", "content": response}
+    response = ai_service.chat_with_ai(msg_dicts, req.signal_context, api_key=req.api_key)
+
+    result = {"role": "assistant", "content": response}
+
+    # Include contextual suggestions if requested
+    if req.include_suggestions:
+        last_message = req.messages[-1].content if req.messages else ""
+        result["suggestions"] = ai_service.get_chat_suggestions(
+            req.signal_context,
+            last_message
+        )
+
+    return result
 
 @app.post("/api/ai/format-notes")
 def format_clinical_notes(req: FormatNotesRequest, api_key: Optional[str] = None):
