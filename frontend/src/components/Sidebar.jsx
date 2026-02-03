@@ -1,7 +1,7 @@
 import React from 'react';
 import { Heart, Brain, Activity, Wind, Database, Settings } from 'lucide-react';
 
-const Sidebar = ({ activeSignalType, setActiveSignalType }) => {
+const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick }) => {
     const menuItems = [
         { type: 'Cardiac', icon: Heart, label: 'Cardiac' },
         { type: 'Neuro', icon: Brain, label: 'Neuro' },
@@ -32,10 +32,10 @@ const Sidebar = ({ activeSignalType, setActiveSignalType }) => {
 
             <div style={{ flex: 1 }} />
 
-            <div className="nav-icon">
+            <div className="nav-icon" onClick={onDatabaseClick} title="Database Manager">
                 <Database size={24} />
             </div>
-            <div className="nav-icon">
+            <div className="nav-icon" title="Settings">
                 <Settings size={24} />
             </div>
         </div>
@@ -43,3 +43,4 @@ const Sidebar = ({ activeSignalType, setActiveSignalType }) => {
 };
 
 export default Sidebar;
+

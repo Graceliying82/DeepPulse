@@ -77,8 +77,11 @@ p {
 
 .main-content {
   padding: 30px;
-  overflow-y: auto;
+  overflow: auto;
+  /* Allow internal scrolling if content overflows */
   position: relative;
+  min-width: 0;
+  /* Crucial for Grid to shrink below content size */
 }
 
 .right-panel {
@@ -89,6 +92,8 @@ p {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  max-width: 80vw;
+  /* Prevent covering the whole screen */
 }
 
 /* -----------------------------------------------------------------------------
@@ -577,350 +582,47 @@ p {
 }
 
 /* -----------------------------------------------------------------------------
-   9. Settings Button (FAB)
+   9. Educational Panel Styles
    ----------------------------------------------------------------------------- */
-.settings-fab {
-  position: fixed;
-  bottom: 20px;
-  right: calc(var(--chat-panel-width) + 30px);
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--bg-panel);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
-  cursor: pointer;
+.mode-tab {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.3s ease;
-  z-index: 100;
-  backdrop-filter: blur(10px);
-  font-size: 20px;
-}
-
-.settings-fab:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--primary-glow);
-  border-color: rgba(0, 242, 255, 0.3);
-  box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
-}
-
-.settings-fab.needs-attention {
-  animation: pulse-attention 2s infinite;
-}
-
-.settings-fab .attention-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 10px;
-  height: 10px;
-  background: var(--accent-glow);
-  border-radius: 50%;
-  animation: pulse-dot 1.5s infinite;
-}
-
-@keyframes pulse-attention {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(255, 0, 85, 0);
-  }
-}
-
-@keyframes pulse-dot {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 0.7;
-  }
-}
-
-/* -----------------------------------------------------------------------------
-   10. Modal Overlay & Settings Modal
-   ----------------------------------------------------------------------------- */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.settings-modal {
-  width: 90%;
-  max-width: 500px;
-  max-height: 85vh;
-  overflow-y: auto;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.settings-modal .modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.settings-modal .modal-header h2 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  margin: 0;
-}
-
-.settings-modal .close-btn {
-  background: transparent;
+  gap: 6px;
+  padding: 8px 16px;
   border: none;
-  color: var(--text-secondary);
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: all 0.2s;
-  font-size: 18px;
-}
-
-.settings-modal .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.settings-section {
-  margin-bottom: 24px;
-}
-
-.settings-section h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  margin-bottom: 8px;
-  color: var(--text-primary);
-}
-
-.settings-description {
-  color: var(--text-secondary);
-  font-size: 14px;
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-/* API Key Status */
-.api-key-status {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.current-key {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.status-icon.success {
-  color: #22c55e;
-  font-weight: bold;
-}
-
-.key-display {
-  flex: 1;
-  font-family: monospace;
-  font-size: 13px;
-  color: var(--text-secondary);
-  word-break: break-all;
-}
-
-/* API Key Input */
-.api-key-input {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.input-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  padding: 4px 8px 4px 12px;
-  transition: all 0.2s;
-}
-
-.input-group:focus-within {
-  border-color: var(--primary-glow);
-  box-shadow: 0 0 0 2px rgba(0, 242, 255, 0.1);
-}
-
-.settings-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 14px;
-  padding: 10px 0;
-  outline: none;
-}
-
-.settings-input::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.6;
-}
-
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-/* Buttons */
-.btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  cursor: pointer;
+  background-color: transparent;
+  color: #6b7280;
   transition: all 0.2s;
-  border: none;
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, rgba(0, 242, 255, 0.2), rgba(0, 200, 255, 0.3));
-  border: 1px solid var(--primary-glow);
-  color: var(--primary-glow);
+.mode-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(0, 242, 255, 0.3), rgba(0, 200, 255, 0.4));
-  box-shadow: 0 0 20px rgba(0, 242, 255, 0.3);
+.mode-tab.active {
+  background-color: #3b82f6;
+  color: white;
 }
 
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.educational-content {
+  /* Custom Scrollbar for the inner content */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-.btn-danger {
-  background: rgba(255, 0, 85, 0.1);
-  border: 1px solid rgba(255, 0, 85, 0.3);
-  color: var(--accent-glow);
+.educational-content::-webkit-scrollbar {
+  width: 4px;
 }
 
-.btn-danger:hover {
-  background: rgba(255, 0, 85, 0.2);
-  box-shadow: 0 0 15px rgba(255, 0, 85, 0.2);
+.educational-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Save Status */
-.save-status {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  animation: fadeIn 0.3s ease;
-}
-
-.save-status.saved {
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #22c55e;
-}
-
-.save-status.cleared {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
-}
-
-/* API Key Help Section */
-.api-key-help {
-  margin-top: 20px;
-  padding: 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.api-key-help h4 {
-  font-size: 14px;
-  margin: 0 0 12px;
-  color: var(--text-primary);
-}
-
-.api-key-help ol {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.api-key-help a {
-  color: var(--primary-glow);
-  text-decoration: none;
-}
-
-.api-key-help a:hover {
-  text-decoration: underline;
-}
-
-.api-key-help .note {
-  margin-top: 16px;
-  padding: 12px;
-  background: rgba(0, 242, 255, 0.05);
-  border-radius: 6px;
-  border-left: 3px solid var(--primary-glow);
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.5;
+.educational-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
 }

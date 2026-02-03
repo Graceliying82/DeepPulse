@@ -33,6 +33,7 @@ DB_CATEGORY_MAP = {
     'fantasia': 'respiration',
     'gaitndd': 'motion',
     'mitbih': 'cardiac',
+    'nsrdb': 'cardiac',
 }
 
 def get_category_from_db(db_slug):
@@ -113,11 +114,36 @@ def list_patients(data_dir=None, category=None):
 
     return sorted(records)
 
-def download_data(db_slug, num_records=5, random_shuffle=True, category=None, data_dir=None):
+from app.services import db_service
+
+def sync_database_index(db_slug):
+    """
+    Fetches the full list of records from PhysioNet and updates the local DB inventory.
+    Returns the updated inventory.
+    """
+    try:
+        logger.info(f"Syncing index for {db_slug}...")
+        # Get list from PhysioNet
+        all_records = wfdb.get_record_list(db_slug)
+        
+        # In DB service, this uses INSERT OR IGNORE, preserving 'downloaded' status
+        db_service.add_or_update_records(db_slug, all_records)
+        
+        return db_service.get_inventory(db_slug)
+    except Exception as e:
+        logger.error(f"Failed to sync database index: {e}")
+        # If offline, just return what we have
+        return db_service.get_inventory(db_slug)
+
+def get_db_inventory(db_slug):
+    """Get current inventory from local DB (without syncing)."""
+    return db_service.get_inventory(db_slug)
+
+def download_data(db_slug, record_list=None, num_records=25, random_shuffle=True, category=None, data_dir=None):
     """
     Downloads data to a category-specific directory.
-    Category is auto-detected from db_slug if not provided.
-    Supports both wfdb format and EDF format databases.
+    If record_list is provided, downloads those specific records.
+    Otherwise, falls back to random/all selection.
     """
     if not category:
         category = get_category_from_db(db_slug)
@@ -127,52 +153,88 @@ def download_data(db_slug, num_records=5, random_shuffle=True, category=None, da
     target_dir = os.path.join(get_category_dir(category, base_dir), db_slug)
     ensure_data_dir(target_dir)
 
-    logger.info(f"Downloading {num_records} records from {db_slug} to category '{category}'...")
+    # If record_list provided, usage is explicit
+    target_records = []
+    is_edf_database = False
 
-    try:
-        all_records = wfdb.get_record_list(db_slug)
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Error fetching record list: {e}")
-        raise e
-
-    # Detect if this is an EDF-only database
-    is_edf_database = all_records and all_records[0].endswith('.edf')
-    logger.info(f"Database format: {'EDF' if is_edf_database else 'WFDB'}")
-
-    # Check existing records in this specific db directory
-    existing = set(list_patients(data_dir=target_dir))
-
-    # For EDF databases, strip the .edf extension for comparison
-    if is_edf_database:
-        candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
+    if record_list:
+        target_records = record_list
+        # Quick check for EDF heuristic
+        # We assume caller knows what they are doing, but we can verify against DB or name
+        # For now, just try downloading
+        logger.info(f"Downloading explicit list: {target_records}")
     else:
-        candidates = [r for r in all_records if r not in existing]
+        # Legacy behavior: Fetch list and pick random
+        logger.info(f"Downloading {num_records} records from {db_slug} (Random Selection)...")
+        # Optimization: Check local DB first to avoid slow PhysioNet list fetching
+        local_inventory = db_service.get_inventory(db_slug)
+        if local_inventory and len(local_inventory) > 0:
+            logger.info(f"Using cached record list for {db_slug} ({len(local_inventory)} records)")
+            all_records = [item['record_name'] for item in local_inventory]
+        else:
+            # Fallback to network if cache empty
+            logger.info(f"Fetching record list from PhysioNet for {db_slug}...")
+            try:
+                all_records = wfdb.get_record_list(db_slug)
+                # Sync implicitly
+                db_service.add_or_update_records(db_slug, all_records)
+            except (FileNotFoundError, ValueError) as e:
+                logger.error(f"Error fetching record list: {e}")
+                raise e
 
-    if not candidates:
-        logger.info("All records already downloaded or none available.")
-        return []
+        is_edf_database = all_records and all_records[0].endswith('.edf')
+        logger.info(f"Database format: {'EDF' if is_edf_database else 'WFDB'}")
 
-    if random_shuffle:
-        random.shuffle(candidates)
-        target_records = candidates[:num_records]
-    else:
-        target_records = candidates[:num_records]
+        # Check existing records in this specific db directory
+        existing = set(list_patients(data_dir=target_dir))
+
+        if is_edf_database:
+            candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
+        else:
+            candidates = [r for r in all_records if r not in existing]
+        
+        if not candidates:
+            # If everything is downloaded, we should ensure DB knows it
+            # (Just in case files exist but DB is stale)
+            for r in existing:
+                db_service.mark_record_downloaded(db_slug, r, os.path.join(target_dir, r))
+            return []
+
+        if random_shuffle:
+            random.shuffle(candidates)
+            target_records = candidates[:num_records]
+        else:
+            target_records = candidates[:num_records]
 
     if not target_records:
         return []
 
     downloaded = []
-    # Sequential download to avoid multiprocessing issues
+    # Sequential download
     for rec in target_records:
         try:
             logger.info(f"Downloading record: {rec}")
-            if is_edf_database:
-                # Use dl_files for EDF format (no .hea companion files)
-                wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
+            
+            # Simple heuristic for EDF if not detected above
+            # (WFDB library handles extensions strictly, so we try standard first)
+            # Actually, `dl_database` adds extension automatically.
+            # `dl_files` is for explicit files.
+            
+            # If we don't know it's EDF yet, try to guess or catch error?
+            # For simplicity, we stick to `dl_database` for most, `dl_files` for explicit EDF names
+            
+            if rec.endswith('.edf'):
+                 wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
+                 pure_name = os.path.splitext(rec)[0]
             else:
-                # Use dl_database for standard wfdb format
-                wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
+                 wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
+                 pure_name = rec
+
             downloaded.append(rec)
+            
+            # Update DB
+            db_service.mark_record_downloaded(db_slug, pure_name, os.path.join(target_dir, pure_name))
+            
         except Exception as e:
             logger.error(f"Failed to download record {rec}: {e}")
 

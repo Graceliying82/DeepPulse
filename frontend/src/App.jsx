@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import Dashboard from './components/Dashboard'
-import ChatAssistant from './components/ChatAssistant'
+import RightPanel from './components/RightPanel'
 import ResizableDivider from './components/ResizableDivider'
+import DatabaseManagerModal from './components/DatabaseManagerModal'
+import { ChevronLeft } from 'lucide-react'
 import SettingsModal from './components/SettingsModal'
 import { useApiKey } from './contexts/ApiKeyContext'
 import './App.css'
@@ -10,14 +12,23 @@ import './App.css'
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [activeSignalType, setActiveSignalType] = useState('Cardiac')
-  const [chatPanelWidth, setChatPanelWidth] = useState(350)
-  const [showSettings, setShowSettings] = useState(false)
-  const { hasApiKey } = useApiKey()
+  const [chatPanelWidth, setChatPanelWidth] = useState(400)
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true)
+  const [rightPanelTab, setRightPanelTab] = useState('chat') // 'chat' or 'learn'
+  const [showDatabaseManager, setShowDatabaseManager] = useState(false)
 
-  // Sync CSS variable with React state (for when drag ends)
+  // Lifted state from Dashboard
+  const [selectedDatabase, setSelectedDatabase] = useState('');
+  const [selectedRecord, setSelectedRecord] = useState('');
+  const [signalData, setSignalData] = useState(null);
+  const [cachedSignalImage, setCachedSignalImage] = useState(null);
+
+  // Sync CSS variable with React state
   useEffect(() => {
-    document.documentElement.style.setProperty('--chat-panel-width', `${chatPanelWidth}px`)
-  }, [chatPanelWidth])
+    // If closed, width is effectively 0 for the grid, but we keep the variable for when it opens
+    const width = isRightPanelOpen ? chatPanelWidth : 0;
+    document.documentElement.style.setProperty('--chat-panel-width', `${width}px`)
+  }, [chatPanelWidth, isRightPanelOpen])
 
   const handleResize = useCallback((newWidth) => {
     setChatPanelWidth(newWidth)
@@ -30,46 +41,83 @@ function App() {
         setActiveTab={setActiveTab}
         activeSignalType={activeSignalType}
         setActiveSignalType={setActiveSignalType}
+        onDatabaseClick={() => setShowDatabaseManager(true)}
       />
 
       <main className="main-content">
         {activeTab === 'dashboard' && (
-          <Dashboard signalType={activeSignalType} />
+          <Dashboard
+            signalType={activeSignalType}
+            // Pass lifted state
+            selectedDatabase={selectedDatabase}
+            setSelectedDatabase={setSelectedDatabase}
+            selectedRecord={selectedRecord}
+            setSelectedRecord={setSelectedRecord}
+            signalData={signalData}
+            setSignalData={setSignalData}
+            setCachedSignalImage={setCachedSignalImage}
+          />
         )}
-        {/* We can have overlapping chat or separate page. 
-            For the design "Right panel Chat", we might want it always visible or toggleable.
-            Let's make it a persistent right panel for the "Research Assistant" feel. 
-        */}
+
+        {/* Toggle Button when panel is closed */}
+        {!isRightPanelOpen && (
+          <button
+            onClick={() => setIsRightPanelOpen(true)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              zIndex: 100,
+              background: 'rgba(22, 27, 34, 0.8)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#e3e3e3',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+            }}
+          >
+            <ChevronLeft size={16} />
+            <span>Open Panel</span>
+          </button>
+        )}
       </main>
 
-      <ResizableDivider
-        onResize={handleResize}
-        minWidth={280}
-        maxWidth={600}
-        defaultWidth={350}
-      />
+      {isRightPanelOpen && (
+        <ResizableDivider
+          onResize={handleResize}
+          minWidth={300}
+          maxWidth={800}
+          defaultWidth={400}
+        />
+      )}
 
-      <div className="right-panel">
-        <ChatAssistant signalType={activeSignalType} />
-      </div>
+      {/* Always render container but control visibility with CSS/Width */}
+      {isRightPanelOpen && (
+        <div className="right-panel">
+          <RightPanel
+            isOpen={isRightPanelOpen}
+            onClose={() => setIsRightPanelOpen(false)}
+            activeTab={rightPanelTab}
+            setActiveTab={setRightPanelTab}
+            signalType={activeSignalType}
+            signalData={signalData}
+            preloadedImage={cachedSignalImage}
+          />
+        </div>
+      )}
 
-      {/* Settings button - fixed position */}
-      <button
-        className={`settings-fab ${!hasApiKey ? 'needs-attention' : ''}`}
-        onClick={() => setShowSettings(true)}
-        title="Settings"
-      >
-        ⚙️
-        {!hasApiKey && <span className="attention-dot"></span>}
-      </button>
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+      {/* Database Manager Modal */}
+      {showDatabaseManager && (
+        <DatabaseManagerModal onClose={() => setShowDatabaseManager(false)} />
+      )}
     </div>
   )
 }
 
 export default App
+
