@@ -12,7 +12,7 @@ DeepPulse provides professional-grade visualization and AI-assisted analysis of 
 
 ### Key Capabilities
 1. **Medical-grade visualization** with TRUE calibration (25mm/s, 10mm/mV for ECG)
-2. **AI-driven analysis** powered by Google Gemini 2.0 Flash
+2. **AI-driven analysis** powered by Google Gemini 3.0 Flash
 3. **Interactive learning modes** including hints and diagnostic quizzes
 4. **Multi-signal support** for comprehensive physiological analysis
 
@@ -46,7 +46,7 @@ Modern web application built with:
 ### Backend
 - **FastAPI**: Modern Python web framework
 - **RESTful API**: Clean separation of concerns
-- **Google Gemini 2.0 Flash**: Multimodal AI for signal interpretation
+- **Google Gemini 3.0 Flash**: Multimodal AI for signal interpretation
 - **wfdb Integration**: Direct PhysioNet database access
 - **Smart caching**: Persistent local storage
 

@@ -1,7 +1,7 @@
 # DeepPulse Project Context
 
 ## Overview
-**DeepPulse** is an AI-powered educational and analytical platform for physiological signals (ECG, EEG, etc.). It leverages Google's **Gemini 2.0/3.0** multimodal AI to interpret waveform data, providing expert-level reasoning, clinical insights, and educational content for medical students and researchers.
+**DeepPulse** is an AI-powered educational and analytical platform for physiological signals (ECG, EEG, etc.). It leverages Google's **Gemini 3.0** multimodal AI to interpret waveform data, providing expert-level reasoning, clinical insights, and educational content for medical students and researchers.
 
 The project is built as a modern **full-stack web application**.
 
