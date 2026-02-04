@@ -116,19 +116,32 @@ def list_patients(data_dir=None, category=None):
 
 from app.services import db_service
 
-def sync_database_index(db_slug):
+def sync_database_index(db_slug, force_refresh=False):
     """
-    Fetches the full list of records from PhysioNet and updates the local DB inventory.
+    Fetches the full list of records from PhysioNet and updates the local cache.
+    Uses local JSON cache first unless force_refresh is True.
     Returns the updated inventory.
     """
+    # Check JSON file cache first (unless forcing refresh)
+    if not force_refresh:
+        cached_records = db_service.load_index_from_cache(db_slug)
+        if cached_records:
+            logger.info(f"Using cached index for {db_slug} ({len(cached_records)} records)")
+            db_service.add_or_update_records(db_slug, cached_records)
+            return db_service.get_inventory(db_slug)
+
     try:
-        logger.info(f"Syncing index for {db_slug}...")
+        logger.info(f"Fetching index from PhysioNet for {db_slug}...")
         # Get list from PhysioNet
         all_records = wfdb.get_record_list(db_slug)
-        
+
+        # Save to JSON file cache
+        db_service.save_index_to_cache(db_slug, all_records)
+        logger.info(f"Saved index cache for {db_slug} ({len(all_records)} records)")
+
         # In DB service, this uses INSERT OR IGNORE, preserving 'downloaded' status
         db_service.add_or_update_records(db_slug, all_records)
-        
+
         return db_service.get_inventory(db_slug)
     except Exception as e:
         logger.error(f"Failed to sync database index: {e}")
@@ -139,11 +152,11 @@ def get_db_inventory(db_slug):
     """Get current inventory from local DB (without syncing)."""
     return db_service.get_inventory(db_slug)
 
-def download_data(db_slug, record_list=None, num_records=25, random_shuffle=True, category=None, data_dir=None):
+def download_data(db_slug, record_list=None, num_records=25, category=None, data_dir=None):
     """
     Downloads data to a category-specific directory.
     If record_list is provided, downloads those specific records.
-    Otherwise, falls back to random/all selection.
+    Otherwise, randomly selects from available records.
     """
     if not category:
         category = get_category_from_db(db_slug)
@@ -164,23 +177,32 @@ def download_data(db_slug, record_list=None, num_records=25, random_shuffle=True
         # For now, just try downloading
         logger.info(f"Downloading explicit list: {target_records}")
     else:
-        # Legacy behavior: Fetch list and pick random
+        # Get record list - check caches first
         logger.info(f"Downloading {num_records} records from {db_slug} (Random Selection)...")
-        # Optimization: Check local DB first to avoid slow PhysioNet list fetching
+
+        # 1. Check SQLite inventory first
         local_inventory = db_service.get_inventory(db_slug)
         if local_inventory and len(local_inventory) > 0:
-            logger.info(f"Using cached record list for {db_slug} ({len(local_inventory)} records)")
+            logger.info(f"Using SQLite cache for {db_slug} ({len(local_inventory)} records)")
             all_records = [item['record_name'] for item in local_inventory]
         else:
-            # Fallback to network if cache empty
-            logger.info(f"Fetching record list from PhysioNet for {db_slug}...")
-            try:
-                all_records = wfdb.get_record_list(db_slug)
-                # Sync implicitly
+            # 2. Check JSON file cache
+            cached_records = db_service.load_index_from_cache(db_slug)
+            if cached_records:
+                logger.info(f"Using JSON file cache for {db_slug} ({len(cached_records)} records)")
+                all_records = cached_records
                 db_service.add_or_update_records(db_slug, all_records)
-            except (FileNotFoundError, ValueError) as e:
-                logger.error(f"Error fetching record list: {e}")
-                raise e
+            else:
+                # 3. Fallback to PhysioNet
+                logger.info(f"Fetching record list from PhysioNet for {db_slug}...")
+                try:
+                    all_records = wfdb.get_record_list(db_slug)
+                    # Save to both caches
+                    db_service.save_index_to_cache(db_slug, all_records)
+                    db_service.add_or_update_records(db_slug, all_records)
+                except (FileNotFoundError, ValueError) as e:
+                    logger.error(f"Error fetching record list: {e}")
+                    raise e
 
         is_edf_database = all_records and all_records[0].endswith('.edf')
         logger.info(f"Database format: {'EDF' if is_edf_database else 'WFDB'}")
@@ -200,11 +222,8 @@ def download_data(db_slug, record_list=None, num_records=25, random_shuffle=True
                 db_service.mark_record_downloaded(db_slug, r, os.path.join(target_dir, r))
             return []
 
-        if random_shuffle:
-            random.shuffle(candidates)
-            target_records = candidates[:num_records]
-        else:
-            target_records = candidates[:num_records]
+        random.shuffle(candidates)
+        target_records = candidates[:num_records]
 
     if not target_records:
         return []
@@ -239,6 +258,75 @@ def download_data(db_slug, record_list=None, num_records=25, random_shuffle=True
             logger.error(f"Failed to download record {rec}: {e}")
 
     return downloaded
+
+def download_data_with_progress(db_slug, num_records=5, category=None, data_dir=None):
+    """
+    Generator that yields progress updates while downloading.
+    Yields dicts like: {current: 1, total: 5, record: 'patient001/s0001', status: 'downloading'}
+    """
+    if not category:
+        category = get_category_from_db(db_slug)
+
+    base_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+    target_dir = os.path.join(get_category_dir(category, base_dir), db_slug)
+    ensure_data_dir(target_dir)
+
+    # Get record list - check caches first
+    local_inventory = db_service.get_inventory(db_slug)
+    if local_inventory and len(local_inventory) > 0:
+        all_records = [item['record_name'] for item in local_inventory]
+    else:
+        # Check JSON file cache
+        cached_records = db_service.load_index_from_cache(db_slug)
+        if cached_records:
+            all_records = cached_records
+            db_service.add_or_update_records(db_slug, all_records)
+        else:
+            # Fallback to PhysioNet
+            try:
+                all_records = wfdb.get_record_list(db_slug)
+                db_service.save_index_to_cache(db_slug, all_records)
+                db_service.add_or_update_records(db_slug, all_records)
+            except Exception as e:
+                yield {'error': str(e), 'status': 'error'}
+                return
+
+    # Filter out already downloaded
+    existing = set(list_patients(data_dir=target_dir))
+    is_edf = all_records and all_records[0].endswith('.edf')
+
+    if is_edf:
+        candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
+    else:
+        candidates = [r for r in all_records if r not in existing]
+
+    if not candidates:
+        yield {'current': 0, 'total': 0, 'status': 'complete', 'message': 'All records already downloaded'}
+        return
+
+    random.shuffle(candidates)
+    target_records = candidates[:num_records]
+    total = len(target_records)
+
+    yield {'current': 0, 'total': total, 'status': 'starting'}
+
+    for i, rec in enumerate(target_records):
+        yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'downloading'}
+        try:
+            if rec.endswith('.edf'):
+                wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
+                pure_name = os.path.splitext(rec)[0]
+            else:
+                wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
+                pure_name = rec
+
+            db_service.mark_record_downloaded(db_slug, pure_name, os.path.join(target_dir, pure_name))
+            yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'downloaded'}
+        except Exception as e:
+            logger.error(f"Failed to download record {rec}: {e}")
+            yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'failed', 'error': str(e)}
+
+    yield {'current': total, 'total': total, 'status': 'complete'}
 
 def load_record(record_name, data_dir=None, category=None, max_duration=60):
     """

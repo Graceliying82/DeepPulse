@@ -19,8 +19,8 @@ from app.services import db_service
 logger = logging.getLogger(__name__)
 
 def preload_datasets_background():
-    """Preload 25 records per database in background thread."""
-    target_count = 25
+    """Preload 10 records per database in background thread (demo mode)."""
+    target_count = 10
     dbs = data_service.DB_CATEGORY_MAP
     
     logger.info(f"[Startup Preload] Checking {len(dbs)} databases for minimum {target_count} records...")
@@ -79,8 +79,7 @@ app.add_middleware(
 # --- Models ---
 class DownloadRequest(BaseModel):
     db_slug: str
-    num_records: int = 25
-    random_shuffle: bool = True  # Randomly select records from database
+    num_records: int = 5  # Download 5 more at a time for demo
     category: Optional[str] = None  # Auto-detected if not provided
 
 class DatabaseRecommendationRequest(BaseModel):
@@ -132,12 +131,37 @@ def download_data(req: DownloadRequest):
         records = data_service.download_data(
             db_slug=req.db_slug,
             num_records=req.num_records,
-            random_shuffle=req.random_shuffle,
             category=req.category
         )
         return {"status": "success", "downloaded": len(records), "records": records}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/data/download-stream")
+def download_data_stream(db_slug: str, num_records: int = 5, category: Optional[str] = None):
+    """Download data with SSE progress updates."""
+    import json
+
+    def generate():
+        try:
+            for progress in data_service.download_data_with_progress(
+                db_slug=db_slug,
+                num_records=num_records,
+                category=category
+            ):
+                yield f"data: {json.dumps(progress)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering if present
+        }
+    )
 
 class DownloadRecordRequest(BaseModel):
     db_slug: str

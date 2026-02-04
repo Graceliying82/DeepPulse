@@ -1,10 +1,12 @@
 import sqlite3
 import os
+import json
 from typing import List, Dict, Optional
 
 # Database path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 DB_PATH = os.path.join(BASE_DIR, 'backend', 'data', 'local_inventory.db')
+INDEX_CACHE_DIR = os.path.join(BASE_DIR, 'backend', 'data', 'index_cache')
 
 def get_db_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -81,3 +83,35 @@ def get_all_downloaded() -> List[Dict]:
     rows = c.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+# --- JSON File Cache for Database Index ---
+
+def get_index_cache_path(database: str) -> str:
+    """Get path to JSON cache file for a database."""
+    os.makedirs(INDEX_CACHE_DIR, exist_ok=True)
+    return os.path.join(INDEX_CACHE_DIR, f"{database}_index.json")
+
+def load_index_from_cache(database: str) -> Optional[List[str]]:
+    """Load record list from local JSON cache file."""
+    cache_path = get_index_cache_path(database)
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'r') as f:
+                data = json.load(f)
+                return data.get('records', [])
+        except (json.JSONDecodeError, IOError):
+            return None
+    return None
+
+def save_index_to_cache(database: str, records: List[str]):
+    """Save record list to local JSON cache file."""
+    cache_path = get_index_cache_path(database)
+    try:
+        with open(cache_path, 'w') as f:
+            json.dump({
+                'database': database,
+                'record_count': len(records),
+                'records': records
+            }, f, indent=2)
+    except IOError as e:
+        print(f"Warning: Could not save index cache for {database}: {e}")
