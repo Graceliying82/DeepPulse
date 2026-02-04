@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-**DeepPulse** is an advanced educational and research platform designed for the visualization and AI-powered analysis of physiological signals (ECG, EEG, etc.). By combining medical-grade signal processing with Google's Gemini 2.0 Flash AI, DeepPulse democratizes access to expert-level interpretation for medical students and researchers.
+**DeepPulse** is an advanced educational and research platform designed for the visualization and AI-powered analysis of physiological signals (ECG, EEG, etc.). By combining medical-grade signal processing with Google's Gemini 3.0 Flash AI, DeepPulse democratizes access to expert-level interpretation for medical students and researchers.
 
 ---
 
@@ -33,7 +33,7 @@ graph TD
     User[User] --> Frontend[React 19 Frontend]
     Frontend -- API Requests --> Backend[FastAPI Backend]
     Backend -- Fetch Data --> PhysioNet[PhysioNet Database (WFDB)]
-    Backend -- AI Analysis --> Gemini[Google Gemini 2.0 Flash]
+    Backend -- AI Analysis --> Gemini[Google Gemini 3.0 Flash]
     Backend -- Cache Data --> LocalStorage[Local File Storage]
 ```
 
@@ -86,7 +86,7 @@ Raw Data -> SignalRegistry -> (Selects Interpreter) -> Structured Data -> (Selec
 | **Frontend** | React 19, Vite, TailwindCSS, D3.js (concepts adapted for SVG), Lucide React |
 | **Backend** | Python 3.10+, FastAPI, Uvicorn, Pydantic |
 | **Data Engineering** | WFDB (Waveform Database Library), NumPy, Pandas |
-| **AI / LLM** | Google Gemini 2.0 Flash (Multimodal capabilities) |
+| **AI / LLM** | Google Gemini 3.0 Flash (Multimodal capabilities) |
 | **DevOps / Tooling** | Git, Pytest, ESLint |
 
 ---
