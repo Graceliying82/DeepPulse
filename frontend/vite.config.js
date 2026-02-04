@@ -10,6 +10,14 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
+        // Required for SSE (Server-Sent Events)
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            if (req.url.includes('download-stream')) {
+              proxyReq.setHeader('Accept', 'text/event-stream');
+            }
+          });
+        }
       }
     }
   }

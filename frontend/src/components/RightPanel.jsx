@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, GraduationCap, FileText, X, ChevronRight, Loader2 } from 'lucide-react';
+import { MessageSquare, GraduationCap, FileText, ChevronRight, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import ChatAssistant from './ChatAssistant';
 import EducationalPanel from './EducationalPanel';
@@ -166,7 +166,7 @@ const RightPanel = ({
                         {signalData ? (
                             <EducationalPanel
                                 signalData={signalData}
-                                onClose={() => { }}
+                                onClose={() => setActiveTab('chat')}
                                 preloadedImage={preloadedImage}
                                 isSidebarMode={true}
                             />

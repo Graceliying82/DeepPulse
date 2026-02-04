@@ -2,11 +2,33 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Database, Download, Check, Loader2, X, RefreshCw, HardDrive, Cloud, AlertCircle } from 'lucide-react';
 
+// LocalStorage cache key
+const CACHE_KEY = 'deeppulse_db_index_cache';
+
+const getCachedDatabases = () => {
+    try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        return cached ? JSON.parse(cached) : null;
+    } catch {
+        return null;
+    }
+};
+
+const setCachedDatabases = (data) => {
+    try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    } catch {
+        // Ignore storage errors
+    }
+};
+
 const DatabaseManagerModal = ({ onClose }) => {
-    const [databases, setDatabases] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const cached = getCachedDatabases();
+    const [databases, setDatabases] = useState(cached || []);
+    const [loading, setLoading] = useState(!cached);
     const [syncing, setSyncing] = useState({});
     const [downloading, setDownloading] = useState({});
+    const [downloadProgress, setDownloadProgress] = useState({}); // {slug: {current: 1, total: 5}}
     const [error, setError] = useState(null);
 
     // Known databases with metadata
@@ -25,7 +47,11 @@ const DatabaseManagerModal = ({ onClose }) => {
     };
 
     useEffect(() => {
-        fetchDatabaseStatus();
+        // Use cache if available, otherwise fetch
+        if (!getCachedDatabases()) {
+            fetchDatabaseStatus();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const fetchDatabaseStatus = async () => {
@@ -46,6 +72,8 @@ const DatabaseManagerModal = ({ onClose }) => {
                 })
             );
             setDatabases(results);
+            // Update localStorage cache
+            setCachedDatabases(results);
         } catch (err) {
             setError('Failed to fetch database status');
         } finally {
@@ -65,20 +93,44 @@ const DatabaseManagerModal = ({ onClose }) => {
         }
     };
 
-    const handleDownload25 = async (slug, category) => {
+    const handleDownload5More = (slug, category) => {
         setDownloading(prev => ({ ...prev, [slug]: true }));
-        try {
-            await axios.post('/api/data/download', {
-                db_slug: slug,
-                num_records: 25,
-                category: category
-            });
-            await fetchDatabaseStatus();
-        } catch (err) {
-            console.error('Download failed:', err);
-        } finally {
+        setDownloadProgress(prev => ({ ...prev, [slug]: { current: 0, total: 5 } }));
+
+        const url = `/api/data/download-stream?db_slug=${slug}&num_records=5&category=${category}`;
+        console.log('Starting SSE download:', url);
+
+        const eventSource = new EventSource(url);
+
+        eventSource.onopen = () => {
+            console.log('SSE connection opened');
+        };
+
+        eventSource.onmessage = (event) => {
+            console.log('SSE message:', event.data);
+            const data = JSON.parse(event.data);
+
+            if (data.status === 'downloading' || data.status === 'downloaded' || data.status === 'starting') {
+                setDownloadProgress(prev => ({
+                    ...prev,
+                    [slug]: { current: data.current, total: data.total }
+                }));
+            }
+
+            if (data.status === 'complete' || data.error) {
+                eventSource.close();
+                setDownloading(prev => ({ ...prev, [slug]: false }));
+                setDownloadProgress(prev => ({ ...prev, [slug]: null }));
+                fetchDatabaseStatus();
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('SSE error:', err);
+            eventSource.close();
             setDownloading(prev => ({ ...prev, [slug]: false }));
-        }
+            setDownloadProgress(prev => ({ ...prev, [slug]: null }));
+        };
     };
 
     const getCategoryColor = (category) => {
@@ -240,6 +292,7 @@ const DatabaseManagerModal = ({ onClose }) => {
                                 const catColor = getCategoryColor(meta.category);
                                 const progress = db.total > 0 ? Math.round((db.downloaded / db.total) * 100) : 0;
                                 const isDownloading = downloading[db.slug];
+                                const dlProgress = downloadProgress[db.slug];
                                 const isSyncing = syncing[db.slug];
 
                                 return (
@@ -292,8 +345,8 @@ const DatabaseManagerModal = ({ onClose }) => {
                                                     <div style={{
                                                         width: `${progress}%`,
                                                         height: '100%',
-                                                        background: db.downloaded >= 25 ? '#10b981' : '#00f2ff',
-                                                        boxShadow: db.downloaded >= 25 ? '0 0 8px rgba(16, 185, 129, 0.5)' : '0 0 8px rgba(0, 242, 255, 0.5)',
+                                                        background: db.downloaded >= 10 ? '#10b981' : '#00f2ff',
+                                                        boxShadow: db.downloaded >= 10 ? '0 0 8px rgba(16, 185, 129, 0.5)' : '0 0 8px rgba(0, 242, 255, 0.5)',
                                                         transition: 'width 0.3s ease'
                                                     }} />
                                                 </div>
@@ -324,7 +377,7 @@ const DatabaseManagerModal = ({ onClose }) => {
                                             >
                                                 <RefreshCw size={16} className={isSyncing ? 'spin-animation' : ''} />
                                             </button>
-                                            {db.downloaded >= 25 ? (
+                                            {db.downloaded >= 10 ? (
                                                 <div style={{
                                                     padding: '8px 12px',
                                                     background: 'rgba(16, 185, 129, 0.15)',
@@ -339,7 +392,7 @@ const DatabaseManagerModal = ({ onClose }) => {
                                                 </div>
                                             ) : (
                                                 <button
-                                                    onClick={() => handleDownload25(db.slug, meta.category)}
+                                                    onClick={() => handleDownload5More(db.slug, meta.category)}
                                                     disabled={isDownloading}
                                                     style={{
                                                         padding: '8px 12px',
@@ -361,7 +414,9 @@ const DatabaseManagerModal = ({ onClose }) => {
                                                     ) : (
                                                         <Download size={14} />
                                                     )}
-                                                    {isDownloading ? 'Downloading...' : 'Get 25'}
+                                                    {isDownloading
+                                                        ? (dlProgress ? `${dlProgress.current}/${dlProgress.total}` : 'Starting...')
+                                                        : 'Get 5 more'}
                                                 </button>
                                             )}
                                         </div>

@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.services import data_service
 
 def preload_datasets():
-    target_count = 25
+    target_count = 5
     dbs = data_service.DB_CATEGORY_MAP
     
     logger.info(f"Targeting {target_count} records per database for {len(dbs)} databases.")
