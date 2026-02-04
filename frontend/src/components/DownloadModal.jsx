@@ -1,22 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Download, Sparkles, Loader2, Database, ChevronRight } from 'lucide-react';
+import { Database, Sparkles, ChevronRight, Download, Loader2, X, Check } from 'lucide-react';
+import RecordBrowser from './RecordBrowser';
 
 const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) => {
-    const [step, setStep] = useState('interest'); // 'interest' | 'recommendations' | 'downloading'
+    const [step, setStep] = useState('interest'); // 'interest' | 'recommendations' | 'browse' | 'downloading'
     const [userInterest, setUserInterest] = useState('');
     const [userRole, setUserRole] = useState('medical_student');
     const [recommendations, setRecommendations] = useState([]);
-    const [selectedDatabases, setSelectedDatabases] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [selectedDbForBrowse, setSelectedDbForBrowse] = useState(null);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0, currentDb: '' });
     const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
 
     // Download options
     const [numRecords, setNumRecords] = useState(3);
     const [shuffleRecords, setShuffleRecords] = useState(true);
 
-    // Category display names and example interests
     const categoryInfo = {
         cardiac: {
             name: 'Cardiac Electrical Signals',
@@ -42,7 +42,6 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
 
     const info = categoryInfo[category] || categoryInfo.cardiac;
 
-    // Get AI recommendations
     const getRecommendations = async () => {
         setLoading(true);
         setError(null);
@@ -72,49 +71,39 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
         }
     };
 
-    // Toggle database selection
-    const toggleDatabase = (slug) => {
-        setSelectedDatabases(prev =>
-            prev.includes(slug)
-                ? prev.filter(s => s !== slug)
-                : [...prev, slug]
-        );
+    const handleOpenBrowser = (slug) => {
+        setSelectedDbForBrowse(slug);
+        setStep('browse');
     };
 
-    // Download selected databases
-    const downloadDatabases = async () => {
-        if (selectedDatabases.length === 0) return;
+    // Shared styles
+    const inputStyle = {
+        width: '100%',
+        padding: '10px 12px',
+        borderRadius: '8px',
+        border: '1px solid rgba(255, 255, 255, 0.15)',
+        background: 'rgba(0, 0, 0, 0.3)',
+        color: '#E3E3E3',
+        fontSize: '14px',
+        outline: 'none',
+        boxSizing: 'border-box'
+    };
 
-        setStep('downloading');
-        setDownloadProgress({ current: 0, total: selectedDatabases.length, currentDb: '' });
+    const selectStyle = {
+        ...inputStyle,
+        cursor: 'pointer'
+    };
 
-        for (let i = 0; i < selectedDatabases.length; i++) {
-            const slug = selectedDatabases[i];
-            setDownloadProgress({ current: i + 1, total: selectedDatabases.length, currentDb: slug });
-
-            try {
-                await axios.post('/api/data/download', {
-                    db_slug: slug,
-                    num_records: numRecords,
-                    random_shuffle: shuffleRecords,
-                    category: category
-                });
-            } catch (err) {
-                console.error(`Failed to download ${slug}:`, err);
-                // Continue with next database even if one fails
-            }
-        }
-
-        // Complete
-        if (onDownloadComplete) {
-            onDownloadComplete();
-        }
-        onClose();
+    const labelStyle = {
+        display: 'block',
+        fontSize: '14px',
+        fontWeight: 500,
+        color: '#E3E3E3',
+        marginBottom: '8px'
     };
 
     return (
         <>
-            {/* Backdrop */}
             <div
                 style={{
                     position: 'fixed',
@@ -122,7 +111,8 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    backdropFilter: 'blur(4px)',
                     zIndex: 1000,
                     display: 'flex',
                     alignItems: 'center',
@@ -131,96 +121,88 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                 }}
                 onClick={onClose}
             >
-                {/* Modal Content */}
                 <div
                     style={{
-                        backgroundColor: 'white',
-                        borderRadius: '12px',
-                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                        maxWidth: '550px',
+                        background: 'rgba(22, 27, 34, 0.95)',
+                        backdropFilter: 'blur(12px)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '16px',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                        maxWidth: '600px',
                         width: '100%',
-                        maxHeight: '80vh',
+                        maxHeight: '85vh',
+                        height: step === 'browse' ? '600px' : 'auto',
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column'
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    {/* Modal Header */}
+                    {/* Header */}
                     <div style={{
                         padding: '20px 24px',
-                        borderBottom: '1px solid #e5e7eb',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between'
+                        justifyContent: 'space-between',
+                        background: 'linear-gradient(135deg, rgba(0, 242, 255, 0.1) 0%, rgba(22, 27, 34, 0.5) 100%)'
                     }}>
-                        <div>
-                            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#111827' }}>
-                                Download {signalType} Data
-                            </h3>
-                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6b7280' }}>
-                                {info.name}
-                            </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '10px',
+                                background: 'rgba(0, 242, 255, 0.15)',
+                                border: '1px solid rgba(0, 242, 255, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Download size={22} color="#00f2ff" />
+                            </div>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#E3E3E3' }}>
+                                    {step === 'browse' ? `Manage ${selectedDbForBrowse}` : `Download ${signalType} Data`}
+                                </h3>
+                                <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: '#a1a1aa' }}>
+                                    {step === 'browse' ? 'Browse and download specific records (Local DB)' : info.name}
+                                </p>
+                            </div>
                         </div>
                         <button
                             onClick={onClose}
                             style={{
-                                background: 'none',
-                                border: 'none',
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
                                 cursor: 'pointer',
                                 padding: '8px',
-                                borderRadius: '6px',
+                                borderRadius: '8px',
+                                color: '#a1a1aa',
                                 display: 'flex',
                                 alignItems: 'center',
-                                color: '#6b7280',
+                                justifyContent: 'center',
                                 transition: 'all 0.2s'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                e.currentTarget.style.color = '#111827';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = 'transparent';
-                                e.currentTarget.style.color = '#6b7280';
                             }}
                         >
                             <X size={20} />
                         </button>
                     </div>
 
-                    {/* Modal Body */}
+                    {/* Body */}
                     <div style={{
-                        padding: '20px 24px',
-                        overflowY: 'auto',
-                        flex: 1
+                        flex: 1,
+                        overflowY: step === 'browse' ? 'hidden' : 'auto',
+                        padding: step === 'browse' ? 0 : '20px 24px'
                     }}>
-                        {/* Step 1: Interest Input */}
+                        {/* Step 1: Interest */}
                         {step === 'interest' && (
                             <div>
-                                {/* Role Selection */}
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{
-                                        display: 'block',
-                                        fontSize: '14px',
-                                        fontWeight: 500,
-                                        color: '#374151',
-                                        marginBottom: '8px'
-                                    }}>
-                                        I am a...
-                                    </label>
+                                    <label style={labelStyle}>I am a...</label>
                                     <select
                                         value={userRole}
                                         onChange={(e) => setUserRole(e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px 12px',
-                                            borderRadius: '8px',
-                                            border: '1px solid #d1d5db',
-                                            fontSize: '14px',
-                                            color: '#111827',
-                                            backgroundColor: 'white',
-                                            cursor: 'pointer'
-                                        }}
+                                        style={selectStyle}
                                     >
                                         <option value="medical_student">Medical Student</option>
                                         <option value="resident">Resident / Fellow</option>
@@ -230,191 +212,129 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                         <option value="hobbyist">Hobbyist / Self-learner</option>
                                     </select>
                                 </div>
-
-                                {/* Interest Input */}
                                 <div style={{ marginBottom: '20px' }}>
-                                    <label style={{
-                                        display: 'block',
-                                        fontSize: '14px',
-                                        fontWeight: 500,
-                                        color: '#374151',
-                                        marginBottom: '8px'
-                                    }}>
-                                        What specific area interests you? (optional)
-                                    </label>
+                                    <label style={labelStyle}>Interest (optional)</label>
                                     <input
                                         type="text"
                                         value={userInterest}
                                         onChange={(e) => setUserInterest(e.target.value)}
-                                        placeholder="e.g., arrhythmia detection, sleep analysis..."
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px 12px',
-                                            borderRadius: '8px',
-                                            border: '1px solid #d1d5db',
-                                            fontSize: '14px',
-                                            color: '#111827',
-                                            boxSizing: 'border-box'
-                                        }}
+                                        placeholder="e.g., arrhythmia..."
+                                        style={inputStyle}
                                     />
-                                    <div style={{
-                                        marginTop: '8px',
-                                        display: 'flex',
-                                        flexWrap: 'wrap',
-                                        gap: '6px'
-                                    }}>
-                                        {info.examples.map((example, idx) => (
+                                    <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                        {info.examples.map((ex, i) => (
                                             <button
-                                                key={idx}
-                                                onClick={() => setUserInterest(example)}
+                                                key={i}
+                                                onClick={() => setUserInterest(ex)}
                                                 style={{
-                                                    padding: '4px 10px',
+                                                    padding: '6px 12px',
                                                     fontSize: '12px',
-                                                    backgroundColor: userInterest === example ? '#dbeafe' : '#f3f4f6',
-                                                    color: userInterest === example ? '#1d4ed8' : '#6b7280',
-                                                    border: 'none',
-                                                    borderRadius: '12px',
+                                                    borderRadius: '16px',
+                                                    border: userInterest === ex ? '1px solid rgba(0, 242, 255, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                                    background: userInterest === ex ? 'rgba(0, 242, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                                    color: userInterest === ex ? '#00f2ff' : '#a1a1aa',
                                                     cursor: 'pointer',
                                                     transition: 'all 0.2s'
                                                 }}
                                             >
-                                                {example}
+                                                {ex}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-
                                 {error && (
                                     <div style={{
-                                        padding: '12px',
-                                        backgroundColor: '#fef2f2',
-                                        borderRadius: '8px',
-                                        color: '#dc2626',
+                                        color: '#f87171',
                                         fontSize: '13px',
-                                        marginBottom: '16px'
+                                        marginBottom: '10px',
+                                        padding: '10px',
+                                        background: 'rgba(239, 68, 68, 0.1)',
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(239, 68, 68, 0.2)'
                                     }}>
                                         {error}
                                     </div>
                                 )}
-
-                                {/* Get Recommendations Button */}
                                 <button
                                     onClick={getRecommendations}
                                     disabled={loading}
                                     style={{
                                         width: '100%',
-                                        padding: '12px 16px',
-                                        backgroundColor: '#3b82f6',
-                                        color: 'white',
-                                        border: 'none',
+                                        padding: '12px',
+                                        background: 'rgba(0, 242, 255, 0.15)',
+                                        border: '1px solid rgba(0, 242, 255, 0.3)',
+                                        color: '#00f2ff',
                                         borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        gap: '8px',
                                         fontSize: '14px',
                                         fontWeight: 500,
-                                        cursor: loading ? 'not-allowed' : 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        gap: '8px',
-                                        opacity: loading ? 0.7 : 1,
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    {loading ? (
-                                        <>
-                                            <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} />
-                                            Getting AI Recommendations...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles size={18} />
-                                            Get AI Recommendations
-                                            <ChevronRight size={18} />
-                                        </>
-                                    )}
+                                    {loading ? <Loader2 className="spin-animation" size={18} /> : <Sparkles size={18} />}
+                                    Get Recommendations
                                 </button>
                             </div>
                         )}
 
-                        {/* Step 2: Recommendations */}
                         {step === 'recommendations' && (
                             <div>
-                                <p style={{
-                                    fontSize: '14px',
-                                    color: '#6b7280',
-                                    marginBottom: '16px'
-                                }}>
-                                    Based on your interests, here are recommended databases:
+                                <p style={{ fontSize: '14px', color: '#a1a1aa', marginBottom: '16px' }}>
+                                    Select a database to browse its inventory:
                                 </p>
-
                                 {recommendations.map((rec, idx) => (
                                     <div
                                         key={idx}
-                                        onClick={() => toggleDatabase(rec.slug)}
+                                        onClick={() => handleOpenBrowser(rec.slug)}
                                         style={{
                                             padding: '14px 16px',
-                                            backgroundColor: selectedDatabases.includes(rec.slug) ? '#eff6ff' : '#f9fafb',
-                                            borderRadius: '8px',
+                                            background: 'rgba(255, 255, 255, 0.03)',
+                                            borderRadius: '10px',
                                             marginBottom: '10px',
-                                            border: selectedDatabases.includes(rec.slug) ? '2px solid #3b82f6' : '1px solid #e5e7eb',
+                                            border: '1px solid rgba(255, 255, 255, 0.08)',
                                             cursor: 'pointer',
+                                            display: 'flex',
+                                            gap: '12px',
                                             transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => {
+                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                                            e.currentTarget.style.borderColor = 'rgba(0, 242, 255, 0.3)';
+                                        }}
+                                        onMouseOut={(e) => {
+                                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                                            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
                                         }}
                                     >
                                         <div style={{
+                                            width: '36px',
+                                            height: '36px',
                                             display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '12px'
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            background: 'rgba(0, 242, 255, 0.1)',
+                                            border: '1px solid rgba(0, 242, 255, 0.2)',
+                                            borderRadius: '8px'
                                         }}>
-                                            <div style={{
-                                                width: '20px',
-                                                height: '20px',
-                                                borderRadius: '4px',
-                                                border: selectedDatabases.includes(rec.slug) ? '2px solid #3b82f6' : '2px solid #d1d5db',
-                                                backgroundColor: selectedDatabases.includes(rec.slug) ? '#3b82f6' : 'white',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                flexShrink: 0,
-                                                marginTop: '2px'
-                                            }}>
-                                                {selectedDatabases.includes(rec.slug) && (
-                                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                                                        <path d="M10 3L4.5 8.5L2 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                                    </svg>
-                                                )}
+                                            <Database size={18} color="#00f2ff" />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#E3E3E3' }}>
+                                                {rec.name}
+                                                <span style={{ fontWeight: 400, color: '#a1a1aa', fontSize: '12px', marginLeft: '8px' }}>
+                                                    ({rec.slug})
+                                                </span>
                                             </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px',
-                                                    marginBottom: '4px'
-                                                }}>
-                                                    <Database size={14} style={{ color: '#6b7280' }} />
-                                                    <span style={{
-                                                        fontSize: '14px',
-                                                        fontWeight: 600,
-                                                        color: '#111827'
-                                                    }}>
-                                                        {rec.name}
-                                                    </span>
-                                                    <span style={{
-                                                        fontSize: '11px',
-                                                        color: '#9ca3af',
-                                                        fontFamily: 'monospace'
-                                                    }}>
-                                                        ({rec.slug})
-                                                    </span>
-                                                </div>
-                                                <p style={{
-                                                    fontSize: '13px',
-                                                    color: '#6b7280',
-                                                    margin: 0,
-                                                    lineHeight: '1.5'
-                                                }}>
-                                                    {rec.description}
-                                                </p>
-                                            </div>
+                                            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#a1a1aa' }}>
+                                                {rec.description}
+                                            </p>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                            <ChevronRight size={16} color="#a1a1aa" />
                                         </div>
                                     </div>
                                 ))}
@@ -569,54 +489,41 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                             </div>
                         )}
 
-                        {/* Step 3: Downloading */}
-                        {step === 'downloading' && (
-                            <div style={{
-                                textAlign: 'center',
-                                padding: '40px 20px'
-                            }}>
-                                <Loader2
-                                    size={48}
+                        {step === 'browse' && selectedDbForBrowse && (
+                            <RecordBrowser
+                                dbSlug={selectedDbForBrowse}
+                                category={category}
+                                onDownloadComplete={onDownloadComplete}
+                            />
+                        )}
+
+                        {step === 'browse' && (
+                            <div style={{ padding: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                                <button
+                                    onClick={() => setStep('recommendations')}
                                     style={{
-                                        color: '#3b82f6',
-                                        animation: 'spin 1s linear infinite',
-                                        marginBottom: '20px'
+                                        width: '100%',
+                                        padding: '10px',
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                        color: '#E3E3E3',
+                                        fontSize: '14px',
+                                        transition: 'all 0.2s'
                                     }}
-                                />
-                                <h4 style={{
-                                    margin: '0 0 8px 0',
-                                    fontSize: '16px',
-                                    fontWeight: 600,
-                                    color: '#111827'
-                                }}>
-                                    Downloading Data...
-                                </h4>
-                                <p style={{
-                                    margin: '0 0 16px 0',
-                                    fontSize: '14px',
-                                    color: '#6b7280'
-                                }}>
-                                    {downloadProgress.currentDb} ({downloadProgress.current} of {downloadProgress.total})
-                                </p>
-                                <div style={{
-                                    width: '100%',
-                                    height: '8px',
-                                    backgroundColor: '#e5e7eb',
-                                    borderRadius: '4px',
-                                    overflow: 'hidden'
-                                }}>
-                                    <div style={{
-                                        width: `${(downloadProgress.current / downloadProgress.total) * 100}%`,
-                                        height: '100%',
-                                        backgroundColor: '#3b82f6',
-                                        transition: 'width 0.3s ease'
-                                    }} />
-                                </div>
+                                >
+                                    Back to Recommendations
+                                </button>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
+            <style>{`
+                .spin-animation { animation: spin 1s linear infinite; }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            `}</style>
         </>
     );
 };
