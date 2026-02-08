@@ -227,11 +227,9 @@ Contributions welcome! Areas of interest:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
-**DeepPulse is for educational and research purposes only and is not a medical device.**
-
-The AI-generated analyses should not be used for clinical diagnosis or treatment decisions. Always consult qualified healthcare professionals for medical advice.
+DeepPulse is an educational and research tool. AI-generated analyses are based on anonymized PhysioNet data and should be independently verified before any clinical application.
 
 ## 🙏 Acknowledgments
 

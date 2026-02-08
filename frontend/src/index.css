@@ -77,7 +77,7 @@ button:focus-visible {
   }
 }
 
-/* Markdown Content Styling */
+/* Markdown Content Styling (dark theme) */
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3,
@@ -85,7 +85,7 @@ button:focus-visible {
   margin-top: 16px;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #111827;
+  color: #f3f4f6;
 }
 
 .markdown-content h1 { font-size: 1.5em; }
@@ -109,15 +109,17 @@ button:focus-visible {
 
 .markdown-content strong {
   font-weight: 600;
-  color: #111827;
+  color: #ffffff;
 }
 
 .markdown-content em {
   font-style: italic;
+  color: #d1d5db;
 }
 
 .markdown-content code {
-  background-color: #f3f4f6;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
@@ -128,12 +130,12 @@ button:focus-visible {
   border-left: 3px solid #3b82f6;
   margin: 12px 0;
   padding-left: 12px;
-  color: #6b7280;
+  color: #9ca3af;
 }
 
 .markdown-content hr {
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin: 16px 0;
 }
 

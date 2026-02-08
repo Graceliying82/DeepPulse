@@ -1,393 +1,231 @@
-import wfdb
+"""
+Data service -- loads signal files from Supabase Storage, caches locally,
+and parses them with wfdb / pyedflib.
+"""
+
 import os
-import shutil
 import logging
-import random
+import tempfile
+
+import wfdb
 import numpy as np
+
+from app.services.supabase_client import get_client
+from app.services import db_service
 
 logger = logging.getLogger(__name__)
 
-# Data dir is at DeepPulse/data. 
-# This file is at DeepPulse/backend/app/services/data_service.py
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-DEFAULT_DATA_DIR = os.path.join(BASE_DIR, 'data')
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-# Category mapping
 CATEGORY_MAPPING = {
     "cardiac": "Cardiac Electrical Signals",
     "hemodynamic": "Hemodynamic Signals",
     "neurological": "Neurological Signals",
     "respiration": "Oxygenation & Respiration",
-    "motion": "Mechanical & Motion Data"
+    "motion": "Mechanical & Motion Data",
 }
 
-# Database to category mapping (expandable)
 DB_CATEGORY_MAP = {
-    'ptbdb': 'cardiac',
-    'mitdb': 'cardiac',
-    'afdb': 'cardiac',
-    'iafdb': 'cardiac',
-    'eegmmidb': 'neurological',
-    'chbmit': 'neurological',
-    'emgdb': 'neurological',
-    'fantasia': 'respiration',
-    'gaitndd': 'motion',
-    'mitbih': 'cardiac',
-    'nsrdb': 'cardiac',
+    "ptbdb": "cardiac",
+    "mitdb": "cardiac",
+    "afdb": "cardiac",
+    "iafdb": "cardiac",
+    "eegmmidb": "neurological",
+    "chbmit": "neurological",
+    "emgdb": "neurological",
+    "fantasia": "respiration",
+    "gaitndd": "motion",
+    "mitbih": "cardiac",
+    "nsrdb": "cardiac",
+    "mghdb": "hemodynamic",
 }
 
-def get_category_from_db(db_slug):
-    """Infer category from database slug."""
-    return DB_CATEGORY_MAP.get(db_slug, 'cardiac')  # Default to cardiac
+STORAGE_BUCKET = "signal-files"
+CACHE_DIR = os.path.join(tempfile.gettempdir(), "deeppulse_cache")
 
-def get_category_dir(category, base_dir=None):
-    """Get the directory path for a specific category."""
-    base = base_dir if base_dir else DEFAULT_DATA_DIR
-    return os.path.join(base, category)
+# ---------------------------------------------------------------------------
+# Cache helpers
+# ---------------------------------------------------------------------------
 
-def ensure_data_dir(data_dir=None):
-    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir)
 
-def clean_data_directory(data_dir=None, category=None):
-    """
-    Safely removes content from the data directory.
-    If category is specified, only clears that category.
-    """
-    target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    
-    if category:
-        target_dir = get_category_dir(category, target_dir)
-    
-    if os.path.exists(target_dir):
-        # Safety check
-        abs_path = os.path.abspath(target_dir)
-        if "DeepPulse" not in abs_path:
-             logger.warning(f"Safety Check Failed: Refusing to delete potentially unsafe directory: {target_dir}")
-             return False
+def _ensure_cache_dir(subpath: str = "") -> str:
+    """Return (and create) a local cache directory."""
+    target = os.path.join(CACHE_DIR, subpath)
+    os.makedirs(target, exist_ok=True)
+    return target
 
-        shutil.rmtree(target_dir)
-        os.makedirs(target_dir)
-        logger.info(f"Data directory cleared: {target_dir}")
-        return True
-    return False
 
-def list_categories(data_dir=None):
-    """List all available categories with data."""
-    base_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    ensure_data_dir(base_dir)
-    
-    categories = []
-    for cat_key in CATEGORY_MAPPING.keys():
-        cat_dir = get_category_dir(cat_key, base_dir)
-        if os.path.exists(cat_dir) and os.listdir(cat_dir):
-            categories.append({
-                "key": cat_key,
-                "name": CATEGORY_MAPPING[cat_key],
-                "record_count": len(list_patients(category=cat_key))
-            })
-    
-    return categories
+def _cached_file(storage_path: str) -> str | None:
+    """Return local path if already cached, else None."""
+    local = os.path.join(CACHE_DIR, storage_path)
+    if os.path.exists(local):
+        return local
+    return None
 
-def list_patients(data_dir=None, category=None):
-    """
-    Returns a list of record names.
-    If category is specified, only returns records from that category.
-    Supports both wfdb (.hea) and EDF (.edf) formats.
-    """
-    if category:
-        target_dir = get_category_dir(category, data_dir or DEFAULT_DATA_DIR)
-    else:
-        target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
 
-    ensure_data_dir(target_dir)
+def _download_from_storage(storage_path: str) -> str:
+    """Download a file from Supabase Storage into the local cache. Returns local path."""
+    local_path = os.path.join(CACHE_DIR, storage_path)
+    if os.path.exists(local_path):
+        return local_path
 
-    records = []
-    for root, dirs, files in os.walk(target_dir):
-        for file in files:
-            # Support both wfdb (.hea) and EDF (.edf) formats
-            if file.endswith(".hea") or file.endswith(".edf"):
-                full_path = os.path.join(root, file)
-                rel_path = os.path.relpath(full_path, target_dir)
-                records.append(os.path.splitext(rel_path)[0])
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
-    return sorted(records)
+    data = get_client().storage.from_(STORAGE_BUCKET).download(storage_path)
+    with open(local_path, "wb") as f:
+        f.write(data)
 
-from app.services import db_service
+    return local_path
 
-def sync_database_index(db_slug, force_refresh=False):
-    """
-    Fetches the full list of records from PhysioNet and updates the local cache.
-    Uses local JSON cache first unless force_refresh is True.
-    Returns the updated inventory.
-    """
-    # Check JSON file cache first (unless forcing refresh)
-    if not force_refresh:
-        cached_records = db_service.load_index_from_cache(db_slug)
-        if cached_records:
-            logger.info(f"Using cached index for {db_slug} ({len(cached_records)} records)")
-            db_service.add_or_update_records(db_slug, cached_records)
-            return db_service.get_inventory(db_slug)
 
-    try:
-        logger.info(f"Fetching index from PhysioNet for {db_slug}...")
-        # Get list from PhysioNet
-        all_records = wfdb.get_record_list(db_slug)
+def _parse_hea_data_files(hea_path: str) -> list[str]:
+    """Read a WFDB .hea file and return the unique data filenames it references."""
+    filenames: set[str] = set()
+    with open(hea_path, "r") as f:
+        lines = f.readlines()
 
-        # Save to JSON file cache
-        db_service.save_index_to_cache(db_slug, all_records)
-        logger.info(f"Saved index cache for {db_slug} ({len(all_records)} records)")
-
-        # In DB service, this uses INSERT OR IGNORE, preserving 'downloaded' status
-        db_service.add_or_update_records(db_slug, all_records)
-
-        return db_service.get_inventory(db_slug)
-    except Exception as e:
-        logger.error(f"Failed to sync database index: {e}")
-        # If offline, just return what we have
-        return db_service.get_inventory(db_slug)
-
-def get_db_inventory(db_slug):
-    """Get current inventory from local DB (without syncing)."""
-    return db_service.get_inventory(db_slug)
-
-def download_data(db_slug, record_list=None, num_records=25, category=None, data_dir=None):
-    """
-    Downloads data to a category-specific directory.
-    If record_list is provided, downloads those specific records.
-    Otherwise, randomly selects from available records.
-    """
-    if not category:
-        category = get_category_from_db(db_slug)
-
-    # Build target directory: data/{category}/{db_slug}/
-    base_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    target_dir = os.path.join(get_category_dir(category, base_dir), db_slug)
-    ensure_data_dir(target_dir)
-
-    # If record_list provided, usage is explicit
-    target_records = []
-    is_edf_database = False
-
-    if record_list:
-        target_records = record_list
-        # Quick check for EDF heuristic
-        # We assume caller knows what they are doing, but we can verify against DB or name
-        # For now, just try downloading
-        logger.info(f"Downloading explicit list: {target_records}")
-    else:
-        # Get record list - check caches first
-        logger.info(f"Downloading {num_records} records from {db_slug} (Random Selection)...")
-
-        # 1. Check SQLite inventory first
-        local_inventory = db_service.get_inventory(db_slug)
-        if local_inventory and len(local_inventory) > 0:
-            logger.info(f"Using SQLite cache for {db_slug} ({len(local_inventory)} records)")
-            all_records = [item['record_name'] for item in local_inventory]
-        else:
-            # 2. Check JSON file cache
-            cached_records = db_service.load_index_from_cache(db_slug)
-            if cached_records:
-                logger.info(f"Using JSON file cache for {db_slug} ({len(cached_records)} records)")
-                all_records = cached_records
-                db_service.add_or_update_records(db_slug, all_records)
-            else:
-                # 3. Fallback to PhysioNet
-                logger.info(f"Fetching record list from PhysioNet for {db_slug}...")
-                try:
-                    all_records = wfdb.get_record_list(db_slug)
-                    # Save to both caches
-                    db_service.save_index_to_cache(db_slug, all_records)
-                    db_service.add_or_update_records(db_slug, all_records)
-                except (FileNotFoundError, ValueError) as e:
-                    logger.error(f"Error fetching record list: {e}")
-                    raise e
-
-        is_edf_database = all_records and all_records[0].endswith('.edf')
-        logger.info(f"Database format: {'EDF' if is_edf_database else 'WFDB'}")
-
-        # Check existing records in this specific db directory
-        existing = set(list_patients(data_dir=target_dir))
-
-        if is_edf_database:
-            candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
-        else:
-            candidates = [r for r in all_records if r not in existing]
-        
-        if not candidates:
-            # If everything is downloaded, we should ensure DB knows it
-            # (Just in case files exist but DB is stale)
-            for r in existing:
-                db_service.mark_record_downloaded(db_slug, r, os.path.join(target_dir, r))
-            return []
-
-        random.shuffle(candidates)
-        target_records = candidates[:num_records]
-
-    if not target_records:
+    if not lines:
         return []
 
-    downloaded = []
-    # Sequential download
-    for rec in target_records:
-        try:
-            logger.info(f"Downloading record: {rec}")
-            
-            # Simple heuristic for EDF if not detected above
-            # (WFDB library handles extensions strictly, so we try standard first)
-            # Actually, `dl_database` adds extension automatically.
-            # `dl_files` is for explicit files.
-            
-            # If we don't know it's EDF yet, try to guess or catch error?
-            # For simplicity, we stick to `dl_database` for most, `dl_files` for explicit EDF names
-            
-            if rec.endswith('.edf'):
-                 wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
-                 pure_name = os.path.splitext(rec)[0]
-            else:
-                 wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
-                 pure_name = rec
+    # First line: record_name num_signals [fs ...]
+    first = lines[0].strip().split()
+    num_signals = int(first[1]) if len(first) >= 2 else 0
 
-            downloaded.append(rec)
-            
-            # Update DB
-            db_service.mark_record_downloaded(db_slug, pure_name, os.path.join(target_dir, pure_name))
-            
-        except Exception as e:
-            logger.error(f"Failed to download record {rec}: {e}")
+    # Signal lines follow (one per signal). First field is the data filename.
+    for line in lines[1 : 1 + num_signals]:
+        parts = line.strip().split()
+        if parts:
+            filenames.add(parts[0])
 
-    return downloaded
+    return sorted(filenames)
 
-def download_data_with_progress(db_slug, num_records=5, category=None, data_dir=None):
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def get_category_from_db(db_slug: str) -> str:
+    return DB_CATEGORY_MAP.get(db_slug, "cardiac")
+
+
+def list_categories():
+    """List categories that have data in Supabase."""
+    databases = db_service.list_databases()
+
+    # Group by category
+    cat_counts: dict[str, int] = {}
+    for db in databases:
+        cat = db["category"]
+        cat_counts[cat] = cat_counts.get(cat, 0) + (db.get("record_count") or 0)
+
+    categories = []
+    for key, name in CATEGORY_MAPPING.items():
+        count = cat_counts.get(key, 0)
+        if count > 0:
+            categories.append({"key": key, "name": name, "record_count": count})
+
+    return categories
+
+
+def list_patients(category: str | None = None):
     """
-    Generator that yields progress updates while downloading.
-    Yields dicts like: {current: 1, total: 5, record: 'patient001/s0001', status: 'downloading'}
-    """
-    if not category:
-        category = get_category_from_db(db_slug)
-
-    base_dir = data_dir if data_dir else DEFAULT_DATA_DIR
-    target_dir = os.path.join(get_category_dir(category, base_dir), db_slug)
-    ensure_data_dir(target_dir)
-
-    # Get record list - check caches first
-    local_inventory = db_service.get_inventory(db_slug)
-    if local_inventory and len(local_inventory) > 0:
-        all_records = [item['record_name'] for item in local_inventory]
-    else:
-        # Check JSON file cache
-        cached_records = db_service.load_index_from_cache(db_slug)
-        if cached_records:
-            all_records = cached_records
-            db_service.add_or_update_records(db_slug, all_records)
-        else:
-            # Fallback to PhysioNet
-            try:
-                all_records = wfdb.get_record_list(db_slug)
-                db_service.save_index_to_cache(db_slug, all_records)
-                db_service.add_or_update_records(db_slug, all_records)
-            except Exception as e:
-                yield {'error': str(e), 'status': 'error'}
-                return
-
-    # Filter out already downloaded
-    existing = set(list_patients(data_dir=target_dir))
-    is_edf = all_records and all_records[0].endswith('.edf')
-
-    if is_edf:
-        candidates = [r for r in all_records if os.path.splitext(r)[0] not in existing]
-    else:
-        candidates = [r for r in all_records if r not in existing]
-
-    if not candidates:
-        yield {'current': 0, 'total': 0, 'status': 'complete', 'message': 'All records already downloaded'}
-        return
-
-    random.shuffle(candidates)
-    target_records = candidates[:num_records]
-    total = len(target_records)
-
-    yield {'current': 0, 'total': total, 'status': 'starting'}
-
-    for i, rec in enumerate(target_records):
-        yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'downloading'}
-        try:
-            if rec.endswith('.edf'):
-                wfdb.dl_files(db_slug, target_dir, [rec], overwrite=False)
-                pure_name = os.path.splitext(rec)[0]
-            else:
-                wfdb.dl_database(db_slug, target_dir, records=[rec], overwrite=False)
-                pure_name = rec
-
-            db_service.mark_record_downloaded(db_slug, pure_name, os.path.join(target_dir, pure_name))
-            yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'downloaded'}
-        except Exception as e:
-            logger.error(f"Failed to download record {rec}: {e}")
-            yield {'current': i + 1, 'total': total, 'record': rec, 'status': 'failed', 'error': str(e)}
-
-    yield {'current': total, 'total': total, 'status': 'complete'}
-
-def load_record(record_name, data_dir=None, category=None, max_duration=60):
-    """
-    Loads signal and metadata.
-    If category is provided, looks in category directory.
-    Supports both wfdb format (.hea/.dat) and EDF format (.edf).
-    max_duration: Limit loading to this many seconds (default 60s).
+    Return a sorted list of record name strings.
+    If category is given, filter by that category.
     """
     if category:
-        target_dir = get_category_dir(category, data_dir or DEFAULT_DATA_DIR)
+        records = db_service.get_records_by_category(category)
     else:
-        target_dir = data_dir if data_dir else DEFAULT_DATA_DIR
+        # All records across every database
+        records = []
+        for db in db_service.list_databases():
+            records.extend(db_service.get_inventory(db["slug"]))
 
-    record_path = os.path.join(target_dir, record_name)
+    # Build the relative path the frontend expects: {db_slug}/{record_name}
+    return sorted(
+        f"{r['database_slug']}/{r['record_name']}" for r in records
+    )
 
-    # Check if this is an EDF file
-    edf_path = record_path + '.edf'
-    hea_path = record_path + '.hea'
 
-    if os.path.exists(edf_path):
-        # Load EDF format using pyedflib
-        return _load_edf_record(edf_path, max_duration=max_duration)
-    elif os.path.exists(hea_path):
-        # Load standard wfdb format
-        return _load_wfdb_record(record_path, max_duration=max_duration)
+def load_record(record_name: str, category: str | None = None, max_duration: int = 60):
+    """
+    Load a signal record.
+
+    record_name comes from the frontend as "{db_slug}/{actual_record_name}" or
+    just the raw record_name when category is already resolved.
+
+    Steps:
+      1. Look up the record row in Supabase.
+      2. Download the file(s) from Supabase Storage into the local cache.
+      3. Parse with wfdb or pyedflib exactly like before.
+    """
+    # Split db_slug from the record path
+    parts = record_name.split("/", 1)
+    if len(parts) == 2 and parts[0] in DB_CATEGORY_MAP:
+        db_slug, rec_name = parts
     else:
-        raise FileNotFoundError(f"Record not found: {record_name}")
+        # Fallback: try to find it across all databases
+        db_slug = None
+        rec_name = record_name
+
+    # Look up the row
+    row = None
+    if db_slug:
+        row = db_service.get_record(db_slug, rec_name)
+
+    if row is None:
+        raise FileNotFoundError(f"Record not found in database: {record_name}")
+
+    fmt = row.get("format", "wfdb")
+    storage_path = row["storage_path"]
+    # storage_path looks like: cardiac/ptbdb/patient001/s0001 (or .edf for EDF)
+
+    if fmt == "edf":
+        local_path = _download_from_storage(storage_path)
+        return _load_edf_record(local_path, max_duration=max_duration)
+    else:
+        # WFDB: download .hea first, then parse it for all referenced data files
+        base = storage_path  # e.g. cardiac/ptbdb/patient001/s0001
+        hea_local = _download_from_storage(base + ".hea")
+        for dat_file in _parse_hea_data_files(hea_local):
+            parent = storage_path.rsplit("/", 1)[0]  # directory part
+            _download_from_storage(f"{parent}/{dat_file}")
+        local_base = os.path.join(CACHE_DIR, base)
+        return _load_wfdb_record(local_base, max_duration=max_duration)
 
 
-def _load_wfdb_record(record_path, max_duration=60):
+# ---------------------------------------------------------------------------
+# Parsers (kept from original code)
+# ---------------------------------------------------------------------------
+
+
+def _load_wfdb_record(record_path: str, max_duration: int = 60):
     """Load a standard wfdb format record with duration limit."""
     try:
-        # First read header to get sampling frequency
         header = wfdb.rdheader(record_path)
         fs = header.fs
-        
-        # Calculate samples to read
         calculated_sampto = int(fs * max_duration)
         sampto = min(calculated_sampto, header.sig_len)
-        
-        # Read signals with limit
+
         signals, fields = wfdb.rdsamp(record_path, sampto=sampto)
 
-        # Add note about truncation or full view
-        comments = fields.get('comments', [])
+        comments = fields.get("comments", [])
         if sampto < header.sig_len:
             comments.append(f"Standard View: First {max_duration}s of data shown")
         else:
             comments.append("Complete Record Shown")
 
-        # Sanitize signals (replace NaN/Inf with 0) to prevent JSON errors
-        # Check if signals is a numpy array or valid list
         if signals is not None:
-             signals = np.nan_to_num(signals, nan=0.0, posinf=0.0, neginf=0.0)
+            signals = np.nan_to_num(signals, nan=0.0, posinf=0.0, neginf=0.0)
 
         return {
             "signals": signals,
-            "fs": fields['fs'],
+            "fs": fields["fs"],
             "comments": comments,
-            "sig_name": fields.get('sig_name', []),
-            "units": fields.get('units', [])
+            "sig_name": fields.get("sig_name", []),
+            "units": fields.get("units", []),
         }
     except Exception as e:
         logger.error(f"Failed to load wfdb record {record_path}: {e}")
@@ -396,44 +234,37 @@ def _load_wfdb_record(record_path, max_duration=60):
         raise e
 
 
-def _load_edf_record(edf_path, max_duration=30):
-    """
-    Load an EDF format record using pyedflib.
-    max_duration: Maximum duration in seconds to load (EDF files can be very long).
-    """
+def _load_edf_record(edf_path: str, max_duration: int = 30):
+    """Load an EDF format record using pyedflib."""
     try:
         import pyedflib
 
         f = pyedflib.EdfReader(edf_path)
-
         n_signals = f.signals_in_file
         signal_labels = f.getSignalLabels()
-
-        # Get sample frequencies (may vary per channel)
         sample_freqs = [f.getSampleFrequency(i) for i in range(n_signals)]
-        fs = sample_freqs[0]  # Use first channel's frequency as primary
+        fs = sample_freqs[0]
 
-        # Calculate samples to read (limit to max_duration for performance)
         samples_to_read = int(fs * max_duration)
+        max_channels = min(n_signals, 8)
 
-        # Read signals (limit to reasonable number of channels for display)
-        max_channels = min(n_signals, 8)  # Limit to 8 channels for UI
         signals = []
         for i in range(max_channels):
             signal = f.readSignal(i, 0, samples_to_read)
             signals.append(signal)
-
         f.close()
 
-        # Stack into numpy array (samples x channels)
         signals_array = np.column_stack(signals) if signals else np.array([])
 
         return {
             "signals": signals_array,
             "fs": fs,
-            "comments": [f"EDF File: {os.path.basename(edf_path)}", f"Duration: {max_duration}s of data shown"],
+            "comments": [
+                f"EDF File: {os.path.basename(edf_path)}",
+                f"Duration: {max_duration}s of data shown",
+            ],
             "sig_name": signal_labels[:max_channels],
-            "units": ['uV'] * max_channels  # EDF typically uses microvolts for EEG
+            "units": ["uV"] * max_channels,
         }
     except Exception as e:
         logger.error(f"Failed to load EDF record {edf_path}: {e}")

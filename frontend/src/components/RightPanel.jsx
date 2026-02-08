@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, GraduationCap, FileText, ChevronRight, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import api from '../utils/api';
 import ChatAssistant from './ChatAssistant';
 import EducationalPanel from './EducationalPanel';
+import { useSettings } from '../contexts/SettingsContext';
 
 // Clinical Notes Panel Component
 const ClinicalNotesPanel = ({ signalData }) => {
     const [formattedNotes, setFormattedNotes] = useState(null);
     const [loading, setLoading] = useState(false);
+    const { apiKey } = useSettings();
     const notes = signalData?.comments || [];
 
     useEffect(() => {
@@ -16,7 +18,10 @@ const ClinicalNotesPanel = ({ signalData }) => {
         const formatNotes = async () => {
             setLoading(true);
             try {
-                const response = await axios.post('/api/ai/format-notes', { notes });
+                const response = await api.post('/api/ai/format-notes', {
+                    notes,
+                    api_key: apiKey || null
+                });
                 setFormattedNotes(response.data.formatted);
             } catch (error) {
                 console.error('Failed to format notes:', error);
@@ -41,13 +46,13 @@ const ClinicalNotesPanel = ({ signalData }) => {
 
     return (
         <div className="educational-content" style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '16px', color: '#e3e3e3', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '16px', color: '#e3e3e3', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FileText className="text-blue-500" size={20} style={{ color: '#3b82f6' }} />
                 Clinical Notes
             </h3>
 
             {loading ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
                     <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
                     <p>AI is formatting notes...</p>
                 </div>
@@ -55,21 +60,21 @@ const ClinicalNotesPanel = ({ signalData }) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {formattedNotes?.map((note, idx) => (
                         <div key={idx} style={{
-                            backgroundColor: '#f9fafb',
+                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
                             padding: '12px 16px',
                             borderRadius: '8px',
-                            border: '1px solid #e5e7eb'
+                            border: '1px solid rgba(255, 255, 255, 0.1)'
                         }}>
                             <div style={{
-                                fontSize: '11px',
+                                fontSize: '12px',
                                 fontWeight: 600,
-                                color: '#6b7280',
+                                color: '#9ca3af',
                                 textTransform: 'uppercase',
                                 marginBottom: '4px'
                             }}>
                                 {note.label}
                             </div>
-                            <div style={{ fontSize: '14px', color: '#111827', lineHeight: '1.5' }}>
+                            <div style={{ fontSize: '15px', color: '#e3e3e3', lineHeight: '1.5' }}>
                                 {note.value}
                             </div>
                         </div>
@@ -119,18 +124,18 @@ const RightPanel = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                padding: '6px 10px',
+                                padding: '8px 14px',
                                 border: 'none',
                                 borderRadius: '6px',
                                 background: activeTab === tab.id ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
                                 color: activeTab === tab.id ? '#fff' : '#aaa',
                                 cursor: 'pointer',
-                                fontSize: '13px',
+                                fontSize: '15px',
                                 fontWeight: 500,
                                 transition: 'all 0.2s'
                             }}
                         >
-                            <tab.icon size={14} />
+                            <tab.icon size={16} />
                             {tab.label}
                         </button>
                     ))}
@@ -159,13 +164,20 @@ const RightPanel = ({
 
             {/* Content Area */}
             <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                {activeTab === 'chat' && <ChatAssistant signalType={signalType} />}
+                {activeTab === 'chat' && (
+                    <ChatAssistant
+                        signalType={signalType}
+                        signalData={signalData}
+                        preloadedImage={preloadedImage}
+                    />
+                )}
 
                 {activeTab === 'learn' && (
                     <div style={{ height: '100%', overflowY: 'auto' }}>
                         {signalData ? (
                             <EducationalPanel
                                 signalData={signalData}
+                                signalType={signalType}
                                 onClose={() => setActiveTab('chat')}
                                 preloadedImage={preloadedImage}
                                 isSidebarMode={true}

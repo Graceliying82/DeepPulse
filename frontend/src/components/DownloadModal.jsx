@@ -1,21 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Database, Sparkles, ChevronRight, Download, Loader2, X, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import api from '../utils/api';
+import { Database, Sparkles, ChevronRight, Loader2, X } from 'lucide-react';
 import RecordBrowser from './RecordBrowser';
+import { useSettings } from '../contexts/SettingsContext';
 
 const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) => {
-    const [step, setStep] = useState('interest'); // 'interest' | 'recommendations' | 'browse' | 'downloading'
+    const [step, setStep] = useState('interest'); // 'interest' | 'recommendations' | 'browse'
     const [userInterest, setUserInterest] = useState('');
     const [userRole, setUserRole] = useState('medical_student');
     const [recommendations, setRecommendations] = useState([]);
     const [selectedDbForBrowse, setSelectedDbForBrowse] = useState(null);
-    const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0, currentDb: '' });
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
-
-    // Download options
-    const [numRecords, setNumRecords] = useState(3);
-    const [shuffleRecords, setShuffleRecords] = useState(true);
+    const { apiKey } = useSettings();
 
     const categoryInfo = {
         cardiac: {
@@ -36,7 +33,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
         },
         motion: {
             name: 'Mechanical & Motion Data',
-            examples: ['gait analysis', 'Parkinson\'s disease', 'fall detection', 'activity recognition', 'balance']
+            examples: ['gait analysis', "Parkinson's disease", 'fall detection', 'activity recognition', 'balance']
         }
     };
 
@@ -46,10 +43,11 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
         setLoading(true);
         setError(null);
         try {
-            const response = await axios.post('/api/recommend-databases', {
+            const response = await api.post('/api/recommend-databases', {
                 user_role: userRole,
                 category: category,
-                user_interest: userInterest || null
+                user_interest: userInterest || null,
+                api_key: apiKey || null
             });
 
             const recs = response.data.recommendations;
@@ -76,7 +74,6 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
         setStep('browse');
     };
 
-    // Shared styles
     const inputStyle = {
         width: '100%',
         padding: '10px 12px',
@@ -89,10 +86,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
         boxSizing: 'border-box'
     };
 
-    const selectStyle = {
-        ...inputStyle,
-        cursor: 'pointer'
-    };
+    const selectStyle = { ...inputStyle, cursor: 'pointer' };
 
     const labelStyle = {
         display: 'block',
@@ -107,10 +101,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
             <div
                 style={{
                     position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                    top: 0, left: 0, right: 0, bottom: 0,
                     backgroundColor: 'rgba(0, 0, 0, 0.7)',
                     backdropFilter: 'blur(4px)',
                     zIndex: 1000,
@@ -149,41 +140,28 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                     }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '10px',
+                                width: '40px', height: '40px', borderRadius: '10px',
                                 background: 'rgba(0, 242, 255, 0.15)',
                                 border: '1px solid rgba(0, 242, 255, 0.3)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
                             }}>
-                                <Download size={22} color="#00f2ff" />
+                                <Database size={22} color="#00f2ff" />
                             </div>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#E3E3E3' }}>
-                                    {step === 'browse' ? `Manage ${selectedDbForBrowse}` : `Download ${signalType} Data`}
+                                    {step === 'browse' ? `Browse ${selectedDbForBrowse}` : `Explore ${signalType} Data`}
                                 </h3>
                                 <p style={{ margin: '2px 0 0 0', fontSize: '13px', color: '#a1a1aa' }}>
-                                    {step === 'browse' ? 'Browse and download specific records (Local DB)' : info.name}
+                                    {step === 'browse' ? 'Browse available records' : info.name}
                                 </p>
                             </div>
                         </div>
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: 'rgba(255, 255, 255, 0.05)',
-                                border: '1px solid rgba(255, 255, 255, 0.1)',
-                                cursor: 'pointer',
-                                padding: '8px',
-                                borderRadius: '8px',
-                                color: '#a1a1aa',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all 0.2s'
-                            }}
-                        >
+                        <button onClick={onClose} style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            cursor: 'pointer', padding: '8px', borderRadius: '8px',
+                            color: '#a1a1aa', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
                             <X size={20} />
                         </button>
                     </div>
@@ -199,11 +177,7 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                             <div>
                                 <div style={{ marginBottom: '20px' }}>
                                     <label style={labelStyle}>I am a...</label>
-                                    <select
-                                        value={userRole}
-                                        onChange={(e) => setUserRole(e.target.value)}
-                                        style={selectStyle}
-                                    >
+                                    <select value={userRole} onChange={(e) => setUserRole(e.target.value)} style={selectStyle}>
                                         <option value="medical_student">Medical Student</option>
                                         <option value="resident">Resident / Fellow</option>
                                         <option value="clinician">Clinician / Physician</option>
@@ -227,14 +201,11 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                                 key={i}
                                                 onClick={() => setUserInterest(ex)}
                                                 style={{
-                                                    padding: '6px 12px',
-                                                    fontSize: '12px',
-                                                    borderRadius: '16px',
+                                                    padding: '6px 12px', fontSize: '12px', borderRadius: '16px',
                                                     border: userInterest === ex ? '1px solid rgba(0, 242, 255, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
                                                     background: userInterest === ex ? 'rgba(0, 242, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                                                     color: userInterest === ex ? '#00f2ff' : '#a1a1aa',
-                                                    cursor: 'pointer',
-                                                    transition: 'all 0.2s'
+                                                    cursor: 'pointer', transition: 'all 0.2s'
                                                 }}
                                             >
                                                 {ex}
@@ -244,12 +215,8 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                 </div>
                                 {error && (
                                     <div style={{
-                                        color: '#f87171',
-                                        fontSize: '13px',
-                                        marginBottom: '10px',
-                                        padding: '10px',
-                                        background: 'rgba(239, 68, 68, 0.1)',
-                                        borderRadius: '8px',
+                                        color: '#f87171', fontSize: '13px', marginBottom: '10px', padding: '10px',
+                                        background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px',
                                         border: '1px solid rgba(239, 68, 68, 0.2)'
                                     }}>
                                         {error}
@@ -259,20 +226,12 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                     onClick={getRecommendations}
                                     disabled={loading}
                                     style={{
-                                        width: '100%',
-                                        padding: '12px',
+                                        width: '100%', padding: '12px',
                                         background: 'rgba(0, 242, 255, 0.15)',
                                         border: '1px solid rgba(0, 242, 255, 0.3)',
-                                        color: '#00f2ff',
-                                        borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        fontSize: '14px',
-                                        fontWeight: 500,
-                                        transition: 'all 0.2s'
+                                        color: '#00f2ff', borderRadius: '8px', cursor: 'pointer',
+                                        display: 'flex', justifyContent: 'center', alignItems: 'center',
+                                        gap: '8px', fontSize: '14px', fontWeight: 500, transition: 'all 0.2s'
                                     }}
                                 >
                                     {loading ? <Loader2 className="spin-animation" size={18} /> : <Sparkles size={18} />}
@@ -281,10 +240,11 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                             </div>
                         )}
 
+                        {/* Step 2: Recommendations */}
                         {step === 'recommendations' && (
                             <div>
                                 <p style={{ fontSize: '14px', color: '#a1a1aa', marginBottom: '16px' }}>
-                                    Select a database to browse its inventory:
+                                    Select a database to browse its records:
                                 </p>
                                 {recommendations.map((rec, idx) => (
                                     <div
@@ -293,13 +253,9 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                         style={{
                                             padding: '14px 16px',
                                             background: 'rgba(255, 255, 255, 0.03)',
-                                            borderRadius: '10px',
-                                            marginBottom: '10px',
+                                            borderRadius: '10px', marginBottom: '10px',
                                             border: '1px solid rgba(255, 255, 255, 0.08)',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            gap: '12px',
-                                            transition: 'all 0.2s'
+                                            cursor: 'pointer', display: 'flex', gap: '12px', transition: 'all 0.2s'
                                         }}
                                         onMouseOver={(e) => {
                                             e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
@@ -311,14 +267,10 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                         }}
                                     >
                                         <div style={{
-                                            width: '36px',
-                                            height: '36px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
+                                            width: '36px', height: '36px',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             background: 'rgba(0, 242, 255, 0.1)',
-                                            border: '1px solid rgba(0, 242, 255, 0.2)',
-                                            borderRadius: '8px'
+                                            border: '1px solid rgba(0, 242, 255, 0.2)', borderRadius: '8px'
                                         }}>
                                             <Database size={18} color="#00f2ff" />
                                         </div>
@@ -339,161 +291,26 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                     </div>
                                 ))}
 
-                                {/* Download Options */}
-                                <div style={{
-                                    padding: '16px',
-                                    backgroundColor: '#f9fafb',
-                                    borderRadius: '8px',
-                                    marginTop: '16px',
-                                    border: '1px solid #e5e7eb'
-                                }}>
-                                    <div style={{
-                                        fontSize: '13px',
-                                        fontWeight: 600,
-                                        color: '#374151',
-                                        marginBottom: '12px'
-                                    }}>
-                                        Download Options
-                                    </div>
-
-                                    {/* Number of Records */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        marginBottom: '12px'
-                                    }}>
-                                        <label style={{
-                                            fontSize: '13px',
-                                            color: '#6b7280'
-                                        }}>
-                                            Records per database
-                                        </label>
-                                        <select
-                                            value={numRecords}
-                                            onChange={(e) => setNumRecords(Number(e.target.value))}
-                                            style={{
-                                                padding: '6px 10px',
-                                                borderRadius: '6px',
-                                                border: '1px solid #d1d5db',
-                                                fontSize: '13px',
-                                                color: '#111827',
-                                                backgroundColor: 'white',
-                                                cursor: 'pointer',
-                                                minWidth: '80px'
-                                            }}
-                                        >
-                                            <option value={1}>1</option>
-                                            <option value={2}>2</option>
-                                            <option value={3}>3</option>
-                                            <option value={5}>5</option>
-                                            <option value={10}>10</option>
-                                            <option value={20}>20</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Shuffle Toggle */}
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                    }}>
-                                        <div>
-                                            <label style={{
-                                                fontSize: '13px',
-                                                color: '#6b7280',
-                                                display: 'block'
-                                            }}>
-                                                Shuffle records
-                                            </label>
-                                            <span style={{
-                                                fontSize: '11px',
-                                                color: '#9ca3af'
-                                            }}>
-                                                {shuffleRecords ? 'Random selection' : 'First records in order'}
-                                            </span>
-                                        </div>
-                                        <button
-                                            onClick={() => setShuffleRecords(!shuffleRecords)}
-                                            style={{
-                                                width: '44px',
-                                                height: '24px',
-                                                borderRadius: '12px',
-                                                border: 'none',
-                                                backgroundColor: shuffleRecords ? '#3b82f6' : '#d1d5db',
-                                                cursor: 'pointer',
-                                                position: 'relative',
-                                                transition: 'background-color 0.2s'
-                                            }}
-                                        >
-                                            <span style={{
-                                                position: 'absolute',
-                                                top: '2px',
-                                                left: shuffleRecords ? '22px' : '2px',
-                                                width: '20px',
-                                                height: '20px',
-                                                borderRadius: '50%',
-                                                backgroundColor: 'white',
-                                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                                                transition: 'left 0.2s'
-                                            }} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '10px',
-                                    marginTop: '20px'
-                                }}>
-                                    <button
-                                        onClick={() => setStep('interest')}
-                                        style={{
-                                            flex: 1,
-                                            padding: '12px 16px',
-                                            backgroundColor: 'white',
-                                            color: '#374151',
-                                            border: '1px solid #d1d5db',
-                                            borderRadius: '8px',
-                                            fontSize: '14px',
-                                            fontWeight: 500,
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        Back
-                                    </button>
-                                    <button
-                                        onClick={downloadDatabases}
-                                        disabled={selectedDatabases.length === 0}
-                                        style={{
-                                            flex: 2,
-                                            padding: '12px 16px',
-                                            backgroundColor: selectedDatabases.length === 0 ? '#9ca3af' : '#3b82f6',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '8px',
-                                            fontSize: '14px',
-                                            fontWeight: 500,
-                                            cursor: selectedDatabases.length === 0 ? 'not-allowed' : 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '8px'
-                                        }}
-                                    >
-                                        <Download size={18} />
-                                        Download {selectedDatabases.length > 0 ? `${selectedDatabases.length * numRecords} records` : ''}
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={() => setStep('interest')}
+                                    style={{
+                                        width: '100%', marginTop: '16px', padding: '12px 16px',
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        background: 'rgba(255, 255, 255, 0.05)',
+                                        borderRadius: '8px', cursor: 'pointer',
+                                        color: '#E3E3E3', fontSize: '14px', fontWeight: 500
+                                    }}
+                                >
+                                    Back
+                                </button>
                             </div>
                         )}
 
+                        {/* Step 3: Browse records */}
                         {step === 'browse' && selectedDbForBrowse && (
                             <RecordBrowser
                                 dbSlug={selectedDbForBrowse}
                                 category={category}
-                                onDownloadComplete={onDownloadComplete}
                             />
                         )}
 
@@ -502,15 +319,11 @@ const DownloadModal = ({ category, signalType, onClose, onDownloadComplete }) =>
                                 <button
                                     onClick={() => setStep('recommendations')}
                                     style={{
-                                        width: '100%',
-                                        padding: '10px',
+                                        width: '100%', padding: '10px',
                                         border: '1px solid rgba(255, 255, 255, 0.15)',
                                         background: 'rgba(255, 255, 255, 0.05)',
-                                        borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        color: '#E3E3E3',
-                                        fontSize: '14px',
-                                        transition: 'all 0.2s'
+                                        borderRadius: '8px', cursor: 'pointer',
+                                        color: '#E3E3E3', fontSize: '14px', transition: 'all 0.2s'
                                     }}
                                 >
                                     Back to Recommendations

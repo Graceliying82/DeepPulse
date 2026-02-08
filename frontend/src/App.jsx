@@ -4,9 +4,11 @@ import Dashboard from './components/Dashboard'
 import RightPanel from './components/RightPanel'
 import ResizableDivider from './components/ResizableDivider'
 import DatabaseManagerModal from './components/DatabaseManagerModal'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Info, X } from 'lucide-react'
 import SettingsModal from './components/SettingsModal'
-import { useApiKey } from './contexts/ApiKeyContext'
+import OnboardingModal from './components/OnboardingModal'
+import { useSettings } from './contexts/SettingsContext'
+import geminiIcon from './assets/gemini.png'
 import './App.css'
 
 function App() {
@@ -16,6 +18,11 @@ function App() {
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true)
   const [rightPanelTab, setRightPanelTab] = useState('chat') // 'chat' or 'learn'
   const [showDatabaseManager, setShowDatabaseManager] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showDisclaimer, setShowDisclaimer] = useState(true)
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem('deeppulse_onboarded')
+  )
 
   // Lifted state from Dashboard
   const [selectedDatabase, setSelectedDatabase] = useState('');
@@ -35,13 +42,28 @@ function App() {
   }, [])
 
   return (
-    <div className="app-container">
+    <div className="app-root">
+      {/* Announcement / Disclaimer Bar */}
+      {showDisclaimer && (
+        <div className="announcement-bar">
+          <div className="announcement-content">
+            <Info size={14} />
+            <span>For educational and research purposes only. AI analyses use anonymized PhysioNet data and should be verified independently.</span>
+          </div>
+          <button className="announcement-close" onClick={() => setShowDisclaimer(false)}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="app-container">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         activeSignalType={activeSignalType}
         setActiveSignalType={setActiveSignalType}
         onDatabaseClick={() => setShowDatabaseManager(true)}
+        onSettingsClick={() => setShowSettingsModal(true)}
       />
 
       <main className="main-content">
@@ -115,6 +137,34 @@ function App() {
       {showDatabaseManager && (
         <DatabaseManagerModal onClose={() => setShowDatabaseManager(false)} />
       )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onShowOnboarding={() => {
+            setShowSettingsModal(false)
+            localStorage.removeItem('deeppulse_onboarded')
+            setShowOnboarding(true)
+          }}
+        />
+      )}
+
+      {/* Onboarding Modal */}
+      {showOnboarding && (
+        <OnboardingModal onComplete={() => {
+          localStorage.setItem('deeppulse_onboarded', 'true')
+          setShowOnboarding(false)
+        }} />
+      )}
+    </div>
+
+      {/* Footer */}
+      <div className="app-footer">
+        <img src={geminiIcon} alt="Gemini" className="footer-icon" />
+        <span>Powered by Gemini 3 Flash</span>
+      </div>
     </div>
   )
 }

@@ -62,7 +62,7 @@ DEEPPULSE_KNOWLEDGE = {
             "description": "Blood pressure and cardiovascular flow measurements",
             "signal_type": "ABP/BP",
             "clinical_use": "Monitor blood pressure, cardiac output",
-            "databases": []
+            "databases": ["mghdb"]
         },
         "respiration": {
             "display_name": "Oxygenation & Respiration",
@@ -253,7 +253,7 @@ DEEPPULSE_KNOWLEDGE = {
         },
         {
             "question": "Can I use this for real patient diagnosis?",
-            "answer": "No - DeepPulse is for educational purposes only. All AI analysis comes with a disclaimer. For real clinical decisions, always consult qualified healthcare professionals."
+            "answer": "DeepPulse is built for educational and research use with anonymized PhysioNet data. AI-generated analyses should be verified independently before any clinical application."
         },
         {
             "question": "How do I download more data?",

@@ -1,29 +1,62 @@
-import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import api from '../utils/api';
 import ReactMarkdown from 'react-markdown';
+import { Send, Loader2 } from 'lucide-react';
 import geminiIcon from '../assets/gemini.png';
-import { useApiKey } from '../contexts/ApiKeyContext';
+import { useSettings } from '../contexts/SettingsContext';
 
 // Welcome message from Pulse
 const WELCOME_MESSAGE = {
     role: 'assistant',
-    content: `👋 Hi! I'm **Pulse**, your DeepPulse guide!
-
-I can help you:
-- 📊 Understand medical signals (ECG, EEG, etc.)
-- 🗄️ Find the right PhysioNet database
-- 🎓 Practice with Learn mode
-- 💡 Navigate DeepPulse features
-
-What would you like to explore?`
+    content: `What would you like to explore?`
 };
 
-// Default suggestions for new conversations
+// Suggestions per signal category (keys must match Sidebar signalType values)
+const CATEGORY_SUGGESTIONS = {
+    Cardiac: [
+        "Explain this ECG signal",
+        "What does a normal P-wave look like?",
+        "How do I use Learn mode for ECG?"
+    ],
+    Neuro: [
+        "What do alpha and beta waves mean?",
+        "How do I identify seizure patterns in EEG?",
+        "Explain this EEG recording"
+    ],
+    Hemodynamic: [
+        "Explain blood pressure waveforms",
+        "What is pulse pressure?",
+        "How do I read ABP signals?"
+    ],
+    Respiration: [
+        "What is a normal breathing rate?",
+        "Explain respiratory signal features",
+        "How do I interpret this waveform?"
+    ],
+};
+
+// Fallback default
 const DEFAULT_SUGGESTIONS = [
-    "🎯 How do I get started?",
-    "📂 What databases are available?",
-    "🎓 How do I practice reading signals?"
+    "How do I get started?",
+    "What databases are available?",
+    "Help me read a signal"
 ];
+
+/**
+ * Convert a Blob to a base64 string (without the data:... prefix).
+ */
+const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            // Strip the "data:image/png;base64," prefix
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
 
 /**
  * Suggestion Chips Component
@@ -66,26 +99,60 @@ const TypingIndicator = () => (
     </div>
 );
 
-const ChatAssistant = ({ signalType }) => {
+const ChatAssistant = ({ signalType, signalData, preloadedImage }) => {
     const [messages, setMessages] = useState([WELCOME_MESSAGE]);
-    const [suggestions, setSuggestions] = useState(DEFAULT_SUGGESTIONS);
+    const [suggestions, setSuggestions] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [hasUserSent, setHasUserSent] = useState(false);
     const scrollRef = useRef(null);
-    const { apiKey, hasApiKey } = useApiKey();
+    const { apiKey, userRole } = useSettings();
+
+    // Stable key for the current patient/record
+    const recordKey = signalData
+        ? `${signalData.database || ''}-${signalData.record_name || ''}`
+        : null;
+
+    // Pick initial suggestions based on signal category
+    const getInitialSuggestions = useCallback(() => {
+        if (signalType && CATEGORY_SUGGESTIONS[signalType]) {
+            return CATEGORY_SUGGESTIONS[signalType];
+        }
+        return DEFAULT_SUGGESTIONS;
+    }, [signalType]);
+
+    // Reset conversation when patient/record changes
+    useEffect(() => {
+        setMessages([WELCOME_MESSAGE]);
+        setSuggestions(getInitialSuggestions());
+        setInput('');
+        setHasUserSent(false);
+    }, [recordKey]);
+
+    // Build signal metadata object from signalData
+    const buildSignalMetadata = useCallback(() => {
+        if (!signalData) return null;
+        return {
+            channel_names: signalData.channel_names || null,
+            sampling_frequency: signalData.sampling_frequency || null,
+            record_name: signalData.record_name || null,
+            database: signalData.database || null,
+            comments: signalData.comments || null,
+        };
+    }, [signalData]);
 
     // Update context note when signal type changes
     useEffect(() => {
         if (signalType && messages.length > 1) {
-            // Only add context note if conversation has progressed
             const contextNote = {
                 role: 'assistant',
-                content: `📍 *Context updated: Now viewing **${signalType}** signals*`
+                content: `*Context updated: Now viewing **${signalType}** signals*`
             };
             setMessages(prev => [...prev, contextNote]);
-
-            // Update suggestions based on new context
-            updateSuggestionsForContext(signalType);
+        }
+        // Update initial suggestions if user hasn't chatted yet
+        if (!hasUserSent && signalType) {
+            setSuggestions(CATEGORY_SUGGESTIONS[signalType] || DEFAULT_SUGGESTIONS);
         }
     }, [signalType]);
 
@@ -96,31 +163,6 @@ const ChatAssistant = ({ signalType }) => {
         }
     }, [messages, loading]);
 
-    // Update suggestions based on signal context
-    const updateSuggestionsForContext = (context) => {
-        if (!context) {
-            setSuggestions(DEFAULT_SUGGESTIONS);
-            return;
-        }
-
-        const contextLower = context.toLowerCase();
-        if (contextLower.includes('cardiac')) {
-            setSuggestions([
-                "🎓 How do I practice ECG reading?",
-                "💓 Explain the ECG grid",
-                "📝 How do I use Clinical Notes?"
-            ]);
-        } else if (contextLower.includes('neurological')) {
-            setSuggestions([
-                "🧠 What do the frequency bands mean?",
-                "🎓 Practice with Quiz mode",
-                "📊 Why are channels stacked?"
-            ]);
-        } else {
-            setSuggestions(DEFAULT_SUGGESTIONS);
-        }
-    };
-
     // Handle sending a message
     const handleSend = async (messageText = null) => {
         const textToSend = messageText || input.trim();
@@ -130,32 +172,41 @@ const ChatAssistant = ({ signalType }) => {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setLoading(true);
+        setHasUserSent(true);
         setSuggestions([]); // Clear suggestions while loading
 
         try {
-            const response = await axios.post('/api/chat', {
+            // Convert cached image to base64 if available
+            let signalImageB64 = null;
+            if (preloadedImage) {
+                try {
+                    signalImageB64 = await blobToBase64(preloadedImage);
+                } catch (err) {
+                    console.warn('Failed to encode signal image:', err);
+                }
+            }
+
+            const payload = {
                 messages: [...messages, userMsg],
                 signal_context: signalType ? `Active Signal Domain: ${signalType}` : 'No signal loaded',
                 include_suggestions: true,
-                api_key: apiKey || undefined
-            });
+                api_key: apiKey || undefined,
+                user_role: userRole,
+                signal_image: signalImageB64 || undefined,
+                signal_metadata: buildSignalMetadata() || undefined,
+            };
+
+            const response = await api.post('/api/chat', payload);
 
             const botMsg = { role: 'assistant', content: response.data.content };
             setMessages(prev => [...prev, botMsg]);
-
-            // Update suggestions from API response
-            if (response.data.suggestions && response.data.suggestions.length > 0) {
-                setSuggestions(response.data.suggestions);
-            } else {
-                updateSuggestionsForContext(signalType);
-            }
         } catch (error) {
             console.error('Chat error:', error);
-            let errorContent = "😅 Oops! I had trouble connecting. Please check your internet connection and try again.";
+            let errorContent = "Oops! I had trouble connecting. Please check your internet connection and try again.";
 
             // Check if it's an API key error
-            if (error.response?.data?.detail?.includes('API Key') || !hasApiKey) {
-                errorContent = "🔑 To chat with me, please add your Gemini API key in Settings (gear icon at bottom-right). It's free!";
+            if (error.response?.data?.detail?.includes('API Key') || !apiKey) {
+                errorContent = "To chat with me, please add your Gemini API key in Settings (gear icon at bottom-right). It's free!";
             }
 
             const errorMsg = {
@@ -163,7 +214,6 @@ const ChatAssistant = ({ signalType }) => {
                 content: errorContent
             };
             setMessages(prev => [...prev, errorMsg]);
-            setSuggestions(["🔄 Try again", "❓ What can you help with?"]);
         } finally {
             setLoading(false);
         }
@@ -171,8 +221,6 @@ const ChatAssistant = ({ signalType }) => {
 
     // Handle suggestion chip click
     const handleSuggestionClick = (suggestion) => {
-        // Remove emoji prefix for cleaner message (optional)
-        const cleanedMessage = suggestion.replace(/^[^\s]+\s/, '');
         handleSend(suggestion);
     };
 
@@ -188,10 +236,9 @@ const ChatAssistant = ({ signalType }) => {
         <div className="chat-container">
             {/* Header */}
             <div className="chat-header glass-panel">
-                <img src={geminiIcon} alt="Pulse" className="header-icon" />
+                <img src={geminiIcon} alt="Gemini" className="header-icon" />
                 <div className="header-text">
-                    <h3>Pulse</h3>
-                    <span className="header-subtitle">DeepPulse Assistant</span>
+                    <h3>Gemini Assistant</h3>
                 </div>
             </div>
 
@@ -214,8 +261,8 @@ const ChatAssistant = ({ signalType }) => {
                 {loading && <TypingIndicator />}
             </div>
 
-            {/* Suggestion Chips */}
-            {!loading && suggestions.length > 0 && (
+            {/* Suggestion Chips - only before first user message */}
+            {!hasUserSent && !loading && suggestions.length > 0 && (
                 <div className="suggestions-container">
                     <SuggestionChips
                         suggestions={suggestions}
@@ -232,17 +279,14 @@ const ChatAssistant = ({ signalType }) => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask Pulse anything..."
+                    placeholder="Ask anything..."
                     disabled={loading}
                 />
                 <button
                     onClick={() => handleSend()}
                     disabled={loading || !input.trim()}
-                    className={loading ? 'loading' : ''}
                 >
-                    <span className="material-symbols-outlined">
-                        {loading ? 'hourglass_empty' : 'send'}
-                    </span>
+                    {loading ? <Loader2 className="spin-animation" size={20} /> : <Send size={20} />}
                 </button>
             </div>
         </div>

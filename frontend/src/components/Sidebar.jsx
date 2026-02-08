@@ -1,7 +1,9 @@
 import React from 'react';
 import { Heart, Brain, Activity, Wind, Database, Settings } from 'lucide-react';
+import { useSettings } from '../contexts/SettingsContext';
 
-const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick }) => {
+const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick, onSettingsClick }) => {
+    const { hasApiKey } = useSettings();
     const menuItems = [
         { type: 'Cardiac', icon: Heart, label: 'Cardiac' },
         { type: 'Neuro', icon: Brain, label: 'Neuro' },
@@ -11,8 +13,9 @@ const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick }) => 
 
     return (
         <div className="sidebar">
-            <div className="logo" style={{ marginBottom: 20 }}>
-                <Activity size={32} color="#00f2ff" />
+            <div className="logo" style={{ marginBottom: 12 }}>
+                <Activity size={28} color="#00f2ff" />
+                <span className="logo-text">DeepPulse</span>
             </div>
 
             {menuItems.map((item) => {
@@ -25,7 +28,8 @@ const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick }) => 
                         onClick={() => setActiveSignalType(item.type)}
                         title={item.label}
                     >
-                        <Icon size={24} />
+                        <Icon size={22} />
+                        <span className="nav-label">{item.label}</span>
                     </div>
                 )
             })}
@@ -33,10 +37,16 @@ const Sidebar = ({ activeSignalType, setActiveSignalType, onDatabaseClick }) => 
             <div style={{ flex: 1 }} />
 
             <div className="nav-icon" onClick={onDatabaseClick} title="Database Manager">
-                <Database size={24} />
+                <Database size={22} />
+                <span className="nav-label">Data</span>
             </div>
-            <div className="nav-icon" title="Settings">
-                <Settings size={24} />
+            <div className="nav-icon" onClick={onSettingsClick} title="Settings" style={{ position: 'relative' }}>
+                <Settings size={22} />
+                <span className="nav-label">Settings</span>
+                <span
+                    className={`api-key-dot ${hasApiKey ? 'set' : 'unset'}`}
+                    title={hasApiKey ? 'API key configured' : 'No API key set'}
+                />
             </div>
         </div>
     );
