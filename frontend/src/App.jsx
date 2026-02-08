@@ -70,6 +70,7 @@ function App() {
         {activeTab === 'dashboard' && (
           <Dashboard
             signalType={activeSignalType}
+            setSignalType={setActiveSignalType}
             // Pass lifted state
             selectedDatabase={selectedDatabase}
             setSelectedDatabase={setSelectedDatabase}

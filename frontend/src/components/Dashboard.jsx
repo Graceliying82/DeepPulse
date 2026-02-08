@@ -1,11 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import SignalViewer from './SignalViewer';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { captureSVGAsImage } from '../utils/signalCapture';
 
+// All signal types in fallback priority order
+const ALL_SIGNAL_TYPES = ['Cardiac', 'Neuro', 'Hemodynamic', 'Respiration'];
+
+const CATEGORY_MAP = {
+    'Cardiac': 'cardiac',
+    'Neuro': 'neurological',
+    'Hemodynamic': 'hemodynamic',
+    'Respiration': 'respiration',
+    'Motion': 'motion'
+};
+
 const Dashboard = ({
     signalType,
+    setSignalType,
     selectedDatabase,
     setSelectedDatabase,
     selectedRecord,
@@ -17,59 +29,104 @@ const Dashboard = ({
     const [databases, setDatabases] = useState([]);  // List of databases in category
     const [records, setRecords] = useState([]);  // Records in selected database
     const [loading, setLoading] = useState(false);
-
+    const [fallbackNotice, setFallbackNotice] = useState(null);
+    const skipNextSignalEffect = useRef(false);
 
     // Map signalType to category key
     const getCategoryKey = () => {
-        const mapping = {
-            'Cardiac': 'cardiac',
-            'Neuro': 'neurological',
-            'Hemodynamic': 'hemodynamic',
-            'Respiration': 'respiration',
-            'Motion': 'motion'
-        };
-        return mapping[signalType] || 'cardiac';
+        return CATEGORY_MAP[signalType] || 'cardiac';
+    };
+
+    // Try to load a single record. Returns data on success, null on failure.
+    const tryLoadRecord = async (category, recordPath) => {
+        try {
+            const res = await api.get(`/api/data/${category}/${encodeURIComponent(recordPath)}`);
+            return res.data || null;
+        } catch {
+            return null;
+        }
+    };
+
+    // Try all records across all databases for a given category.
+    // Fallback order: patients in db1 -> patients in db2 -> ... -> null
+    const tryLoadFromCategory = async (category, allRecords, dbList) => {
+        for (const db of dbList) {
+            const dbRecords = allRecords.filter(r => r.startsWith(db + '/'));
+            for (const record of dbRecords) {
+                const data = await tryLoadRecord(category, record);
+                if (data) return { db, record, data };
+            }
+        }
+        return null;
+    };
+
+    // Fetch category records from the API, parse into dbList + records
+    const fetchCategoryRecords = async (category) => {
+        const res = await api.get(`/api/data/category/${category}`);
+        const allRecords = res.data.records || [];
+        const dbSet = new Set();
+        allRecords.forEach(r => {
+            const parts = r.split('/');
+            if (parts.length > 0) dbSet.add(parts[0]);
+        });
+        return { allRecords, dbList: Array.from(dbSet).sort() };
     };
 
     // Fetch databases and records for the current category
     const fetchDatabasesAndRecords = async (retryCount = 0, autoSelect = false) => {
         try {
             const category = getCategoryKey();
-            const res = await api.get(`/api/data/category/${category}`);
-            const allRecords = res.data.records || [];
+            const { allRecords, dbList } = await fetchCategoryRecords(category);
 
-            // Parse records to extract unique database names
-            const dbSet = new Set();
-            allRecords.forEach(record => {
-                const parts = record.split('/');
-                if (parts.length > 0) {
-                    dbSet.add(parts[0]);
-                }
-            });
-
-            const dbList = Array.from(dbSet).sort();
             setDatabases(dbList);
             setRecords(allRecords);
 
-            // Auto-select first database and first record
-            if (autoSelect && dbList.length > 0) {
-                const firstDb = dbList[0];
-                setSelectedDatabase(firstDb);
+            if (!autoSelect) {
+                setFallbackNotice(null);
+                return;
+            }
 
-                const firstRecord = allRecords.find(r => r.startsWith(firstDb + '/'));
-                if (firstRecord) {
-                    setSelectedRecord(firstRecord);
-                    setLoading(true);
-                    try {
-                        const dataRes = await api.get(`/api/data/${category}/${encodeURIComponent(firstRecord)}`);
-                        setSignalData(dataRes.data);
-                    } catch (err) {
-                        console.error("Failed to auto-load record:", err);
-                    } finally {
-                        setLoading(false);
+            // Step 1: Try all patients across all databases in THIS category
+            if (dbList.length > 0) {
+                setLoading(true);
+                const result = await tryLoadFromCategory(category, allRecords, dbList);
+                if (result) {
+                    setSelectedDatabase(result.db);
+                    setSelectedRecord(result.record);
+                    setSignalData(result.data);
+                    setFallbackNotice(null);
+                    setLoading(false);
+                    return; // Found working data in this category
+                }
+                setLoading(false);
+            }
+
+            // Step 2: All records in this category failed. Try other workspaces.
+            for (const st of ALL_SIGNAL_TYPES) {
+                if (st === signalType) continue;
+                const otherCat = CATEGORY_MAP[st];
+                try {
+                    const other = await fetchCategoryRecords(otherCat);
+                    if (other.dbList.length === 0) continue;
+                    const result = await tryLoadFromCategory(otherCat, other.allRecords, other.dbList);
+                    if (result) {
+                        setFallbackNotice(`No data for ${signalType}. Switched to ${st}.`);
+                        setDatabases(other.dbList);
+                        setRecords(other.allRecords);
+                        setSelectedDatabase(result.db);
+                        setSelectedRecord(result.record);
+                        setSignalData(result.data);
+                        skipNextSignalEffect.current = true;
+                        setSignalType(st);
+                        return;
                     }
+                } catch {
+                    continue;
                 }
             }
+
+            // Step 3: Nothing works anywhere
+            setFallbackNotice('No downloaded data found. Use the Database Manager to download datasets.');
         } catch (err) {
             console.error("Failed to fetch data", err);
             if (retryCount < 3) {
@@ -85,6 +142,10 @@ const Dashboard = ({
 
     // Reset and auto-select when signalType changes
     useEffect(() => {
+        if (skipNextSignalEffect.current) {
+            skipNextSignalEffect.current = false;
+            return;
+        }
         setSelectedDatabase('');
         setSelectedRecord('');
         setSignalData(null);
@@ -218,6 +279,38 @@ const Dashboard = ({
                 <button className="action-btn" onClick={() => fetchDatabasesAndRecords(0)}>
                     <RefreshCw size={18} />
                 </button>
+
+                {fallbackNotice && (
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '6px 12px',
+                        background: 'rgba(234, 179, 8, 0.1)',
+                        border: '1px solid rgba(234, 179, 8, 0.3)',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        color: '#eab308',
+                        marginLeft: 'auto',
+                        whiteSpace: 'nowrap'
+                    }}>
+                        <span>{fallbackNotice}</span>
+                        <button
+                            onClick={() => setFallbackNotice(null)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#eab308',
+                                cursor: 'pointer',
+                                padding: '0 2px',
+                                fontSize: '16px',
+                                lineHeight: 1
+                            }}
+                        >
+                            x
+                        </button>
+                    </div>
+                )}
 
             </div>
 
