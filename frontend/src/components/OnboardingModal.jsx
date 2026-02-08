@@ -20,7 +20,7 @@ const OnboardingModal = ({ onComplete }) => {
 
     return (
         <div className="modal-overlay">
-            <div className={`onboarding-modal glass-panel ${step === 0 ? 'onboarding-wide' : ''}`}>
+            <div className={`onboarding-modal glass-panel ${step <= 1 ? 'onboarding-wide' : ''}`}>
                 {step === 0 && (
                     <>
                         <div className="onboarding-header">
@@ -43,10 +43,45 @@ const OnboardingModal = ({ onComplete }) => {
                         <button className="btn-primary onboarding-start" onClick={() => setStep(1)}>
                             Continue
                         </button>
+                        <button className="btn-text onboarding-skip" onClick={() => setStep(2)}>
+                            Skip video
+                        </button>
                     </>
                 )}
 
                 {step === 1 && (
+                    <>
+                        <div className="onboarding-header">
+                            <h2>Watch a Quick Walkthrough</h2>
+                            <p className="onboarding-subtitle">
+                                A short video showing how to use DeepPulse.
+                            </p>
+                        </div>
+
+                        <div className="onboarding-section">
+                            <div className="onboarding-video-wrapper">
+                                <iframe
+                                    src="https://www.youtube.com/embed/aixZq7pXn_s?autoplay=1"
+                                    title="DeepPulse Walkthrough"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    className="onboarding-video"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="onboarding-nav">
+                            <button className="btn-secondary" onClick={() => setStep(0)}>
+                                Back
+                            </button>
+                            <button className="btn-primary onboarding-start" onClick={() => setStep(2)}>
+                                Continue
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {step === 2 && (
                     <>
                         <div className="onboarding-header">
                             <h2>Set Up Your Profile</h2>
@@ -101,7 +136,7 @@ const OnboardingModal = ({ onComplete }) => {
                         </div>
 
                         <div className="onboarding-nav">
-                            <button className="btn-secondary" onClick={() => setStep(0)}>
+                            <button className="btn-secondary" onClick={() => setStep(1)}>
                                 Back
                             </button>
                             <button className="btn-primary onboarding-start" onClick={handleFinish}>
