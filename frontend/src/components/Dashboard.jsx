@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import SignalViewer from './SignalViewer';
-import DownloadModal from './DownloadModal';
-import { Download, RefreshCw, FileText, X, GraduationCap, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2 } from 'lucide-react';
 import { captureSVGAsImage } from '../utils/signalCapture';
 
 const Dashboard = ({
@@ -18,7 +17,7 @@ const Dashboard = ({
     const [databases, setDatabases] = useState([]);  // List of databases in category
     const [records, setRecords] = useState([]);  // Records in selected database
     const [loading, setLoading] = useState(false);
-    const [showDownloadModal, setShowDownloadModal] = useState(false);
+
 
     // Map signalType to category key
     const getCategoryKey = () => {
@@ -33,14 +32,13 @@ const Dashboard = ({
     };
 
     // Fetch databases and records for the current category
-    const fetchDatabasesAndRecords = async (retryCount = 0) => {
+    const fetchDatabasesAndRecords = async (retryCount = 0, autoSelect = false) => {
         try {
             const category = getCategoryKey();
-            const res = await axios.get(`/api/data/category/${category}`);
+            const res = await api.get(`/api/data/category/${category}`);
             const allRecords = res.data.records || [];
 
             // Parse records to extract unique database names
-            // Records are in format: "dbname/recordpath" or "dbname/subdir/recordpath"
             const dbSet = new Set();
             allRecords.forEach(record => {
                 const parts = record.split('/');
@@ -49,36 +47,57 @@ const Dashboard = ({
                 }
             });
 
-            setDatabases(Array.from(dbSet).sort());
+            const dbList = Array.from(dbSet).sort();
+            setDatabases(dbList);
             setRecords(allRecords);
+
+            // Auto-select first database and first record
+            if (autoSelect && dbList.length > 0) {
+                const firstDb = dbList[0];
+                setSelectedDatabase(firstDb);
+
+                const firstRecord = allRecords.find(r => r.startsWith(firstDb + '/'));
+                if (firstRecord) {
+                    setSelectedRecord(firstRecord);
+                    setLoading(true);
+                    try {
+                        const dataRes = await api.get(`/api/data/${category}/${encodeURIComponent(firstRecord)}`);
+                        setSignalData(dataRes.data);
+                    } catch (err) {
+                        console.error("Failed to auto-load record:", err);
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+            }
         } catch (err) {
             console.error("Failed to fetch data", err);
             if (retryCount < 3) {
-                setTimeout(() => fetchDatabasesAndRecords(retryCount + 1), 1000 * (retryCount + 1));
+                setTimeout(() => fetchDatabasesAndRecords(retryCount + 1, autoSelect), 1000 * (retryCount + 1));
             }
         }
     };
 
-    // Load databases on mount
+    // Load databases on mount with auto-select
     useEffect(() => {
-        fetchDatabasesAndRecords();
+        fetchDatabasesAndRecords(0, true);
     }, []);
 
-    // Reset selections when signalType changes
+    // Reset and auto-select when signalType changes
     useEffect(() => {
         setSelectedDatabase('');
         setSelectedRecord('');
         setSignalData(null);
-        fetchDatabasesAndRecords();
+        fetchDatabasesAndRecords(0, true);
     }, [signalType]);
 
-    // Get records filtered by selected database
+    // Get records filtered by selected database (show first 10)
     const getFilteredRecords = () => {
         if (!selectedDatabase) return [];
         return records
             .filter(r => r.startsWith(selectedDatabase + '/'))
+            .slice(0, 10)
             .map(r => {
-                // Get the part after the database name
                 const recordPath = r.substring(selectedDatabase.length + 1);
                 return { fullPath: r, displayName: recordPath };
             });
@@ -123,7 +142,7 @@ const Dashboard = ({
 
         try {
             const category = getCategoryKey();
-            const res = await axios.get(`/api/data/${category}/${encodeURIComponent(recordPath)}`);
+            const res = await api.get(`/api/data/${category}/${encodeURIComponent(recordPath)}`);
             setSignalData(res.data);
 
 
@@ -142,7 +161,7 @@ const Dashboard = ({
             <div className="glass-panel" style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <h2 style={{ margin: 0 }}>{signalType === 'Respiration' ? 'Oxygen & Respiration' : signalType} Workspace</h2>
-                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                    <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
                         {signalType === 'Cardiac' && (
                             <>
                                 <span style={{ marginRight: '12px' }}>Supported: <strong style={{ color: '#059669' }}>ECG, EGM</strong></span>
@@ -188,7 +207,7 @@ const Dashboard = ({
                     disabled={!selectedDatabase}
                     style={{ minWidth: '200px' }}
                 >
-                    <option value="">Select Record...</option>
+                    <option value="">Select Patient...</option>
                     {getFilteredRecords().map(r => (
                         <option key={r.fullPath} value={r.fullPath}>{r.displayName}</option>
                     ))}
@@ -200,25 +219,7 @@ const Dashboard = ({
                     <RefreshCw size={18} />
                 </button>
 
-                <div style={{ flex: 1 }} />
-
-                <button className="action-btn primary" onClick={() => setShowDownloadModal(true)} disabled={loading}>
-                    <Download size={18} style={{ marginRight: 8 }} />
-                    Download Data
-                </button>
             </div>
-
-
-
-            {/* Download Modal */}
-            {showDownloadModal && (
-                <DownloadModal
-                    category={getCategoryKey()}
-                    signalType={signalType}
-                    onClose={() => setShowDownloadModal(false)}
-                    onDownloadComplete={() => fetchDatabasesAndRecords()}
-                />
-            )}
 
             {/* Main Signal View */}
             <div className="glass-panel" style={{ position: 'relative', overflow: 'hidden' }}>

@@ -139,7 +139,8 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom
                                 fontSize: 12,
                                 borderRadius: 4,
                                 border: '1px solid #d1d5db',
-                                backgroundColor: '#fff'
+                                backgroundColor: '#fff',
+                                color: '#374151'
                             }}
                         >
                             <option value={15}>15 mm/s</option>
@@ -160,7 +161,8 @@ const SignalHeader = ({ parsed, signalType, timeWindow, onTimeWindowChange, zoom
                             fontSize: 12,
                             borderRadius: 4,
                             border: '1px solid #d1d5db',
-                            backgroundColor: '#fff'
+                            backgroundColor: '#fff',
+                            color: '#374151'
                         }}
                     >
                         <option value={5}>5s</option>

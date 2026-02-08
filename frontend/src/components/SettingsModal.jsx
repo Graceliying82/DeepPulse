@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { useApiKey } from '../contexts/ApiKeyContext';
+import { useSettings, USER_ROLES } from '../contexts/SettingsContext';
 
-const SettingsModal = ({ isOpen, onClose }) => {
-    const { apiKey, saveApiKey, clearApiKey, hasApiKey } = useApiKey();
+const SettingsModal = ({ isOpen, onClose, onShowOnboarding }) => {
+    const { apiKey, saveApiKey, clearApiKey, hasApiKey, userRole, saveUserRole } = useSettings();
     const [inputKey, setInputKey] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [saveStatus, setSaveStatus] = useState('');
@@ -31,7 +31,20 @@ const SettingsModal = ({ isOpen, onClose }) => {
         <div className="modal-overlay" onClick={onClose}>
             <div className="settings-modal glass-panel" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>⚙️ Settings</h2>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        ⚙️ Settings
+                        <span style={{
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: hasApiKey ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                            color: hasApiKey ? '#22c55e' : '#f59e0b',
+                            border: `1px solid ${hasApiKey ? 'rgba(34, 197, 94, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                        }}>
+                            {hasApiKey ? 'API Key Set' : 'No API Key'}
+                        </span>
+                    </h2>
                     <button className="close-btn" onClick={onClose}>✕</button>
                 </div>
 
@@ -42,6 +55,25 @@ const SettingsModal = ({ isOpen, onClose }) => {
                             DeepPulse uses Google's Gemini AI for signal analysis and chat.
                             Enter your own API key to use these features.
                         </p>
+
+                        <div className="settings-subsection">
+                            <h4>👤 User Persona</h4>
+                            <div className="persona-grid">
+                                {USER_ROLES.map(role => (
+                                    <div
+                                        key={role.id}
+                                        className={`persona-card ${userRole === role.id ? 'active' : ''}`}
+                                        onClick={() => saveUserRole(role.id)}
+                                    >
+                                        <div className="persona-header">
+                                            <span className="radio-indicator"></span>
+                                            <span className="persona-label">{role.label}</span>
+                                        </div>
+                                        <span className="persona-desc">{role.description}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
 
                         {hasApiKey ? (
                             <div className="api-key-status">
@@ -110,6 +142,34 @@ const SettingsModal = ({ isOpen, onClose }) => {
                             </p>
                         </div>
                     </section>
+
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '11px',
+                        color: '#71717a',
+                        padding: '12px 16px',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                        marginTop: '8px'
+                    }}>
+                        <span>DeepPulse is an educational and research tool.</span>
+                        <button
+                            onClick={onShowOnboarding}
+                            style={{
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                color: '#a1a1aa',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                            }}
+                        >
+                            Onboard Again
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

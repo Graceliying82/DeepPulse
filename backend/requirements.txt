@@ -1,8 +1,8 @@
 fastapi
 uvicorn
 wfdb
-pandas<2.2
-numpy==1.26.4
+pandas==2.2.3
+numpy>=1.26
 google-genai
 python-multipart
 pydantic
@@ -13,3 +13,4 @@ httpx
 python-dotenv
 pyedflib
 scipy
+supabase
